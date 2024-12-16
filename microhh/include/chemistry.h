@@ -95,6 +95,7 @@ class Chemistry
         std::vector<TF> qprof;
         std::vector<TF> tprof;
 	std::vector<TF> flux_nh3;  //added for nh3_flux 
+	std::vector<TF> total_flux_nh3;  // For accumulating total flux over entire simulation
         TF trfa;
 
         // vectors to contain calculated deposition velocities (m/s)
