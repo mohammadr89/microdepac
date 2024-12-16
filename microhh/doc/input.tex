@@ -1,0 +1,272 @@
+% The design of this document has been borrowed from the DALES manual.
+\documentclass[a4paper,8pt, twocolumn]{extarticle}
+\usepackage[twoside, bindingoffset=0cm, paper=a4paper, left=0.6cm, right=0.6cm, top=0.6cm, bottom=0.2cm, landscape]{geometry}
+\usepackage{amsmath}
+\usepackage{supertabular}
+\usepackage{longtable}
+
+%% Fonts
+%\usepackage{pxfonts}
+\usepackage{fourier}
+\usepackage[T1]{fontenc}
+
+% Define column widths
+\def \wname{1.8cm} % name column
+\def \wdef{2.0cm}  % default value column 
+\def \wopt{1.5cm}   % options column
+\def \wdesc{6.9cm} % description column
+
+% Define new column types for fixed width with left or centered alignment
+\usepackage{array}
+\newcolumntype{L}[1]{>{\raggedright\let\newline\\\arraybackslash\hspace{0pt}}m{#1}}
+\newcolumntype{C}[1]{>{\centering\let\newline\\\arraybackslash\hspace{0pt}}m{#1}}
+
+\begin{document}
+\section*{\huge MicroHH 2.0 cheat sheet}
+
+\subsection*{[advec] Advection}
+\tablefirsthead{\hline NAME & DEFAULT VALUE & OPTIONS & DESCRIPTION \\ \hline}
+\tablehead{\multicolumn{4}{l}{\small\sl ... continued from previous page} \\  NAME & DEFAULT VALUE & OPTIONS & DESCRIPTION \\ \hline}
+\tabletail{\hline \multicolumn{4}{l}{\small\sl Continued on next page ...} \\} 
+\tablelasttail{\hline}
+\begin{supertabular}{|L{\wname} C{\wdef} C{\wopt} L{\wdesc}|}
+swadvec       & swspatialorder       & 0   & disable advection \\ 
+              &                      & 2   & 2nd-order advection \\
+              &                      & 2i4 & 2nd-order advection with 4th-order interpolation \\  
+              &                      & 4   & 4th-order advection (high accuracy) \\
+              &                      & 4m  & 4th-order advection (energy conserving) \\
+cflmax        & 1.0                  &     & \\
+\end{supertabular}
+
+\subsection*{[boundary] Boundary conditions}
+\tablefirsthead{\hline NAME & DEFAULT VALUE & OPTIONS & DESCRIPTION \\ \hline}
+\tablehead{\multicolumn{4}{l}{\small\sl ... continued from previous page} \\  \hline NAME & DEFAULT VALUE & OPTIONS & DESCRIPTION \\ \hline}
+\tabletail{\hline \multicolumn{4}{l}{\small\sl Continued on next page ...} \\} 
+\tablelasttail{\hline}
+\begin{supertabular}{|L{\wname} C{\wdef} C{\wopt} L{\wdesc}|}
+swboundary     & default & default   & fully resolved boundaries (smooth wall) \\
+               &         & surface   & MOST based wall model \\
+               &         & patch	    & patches, resolved boundary \\
+               &         & surface\_patch & patches, MOST boundary \\
+mbcbot         & n/a     & noslip    & no-slip bottom boundary condition \\
+               &         & freeslip  & free-slip bottom boundary condition \\
+               &         & ustar     & fixed ustar bottom boundary condition \\
+mbctop         & n/a     & noslip    & no-slip top boundary condition \\
+               &         & freeslip  & free-slip top boundary condition\\
+sbcbot[]       & n/a     & dirichlet & fixed bottom value boundary condition \\
+               &         & neumann   & fixed bottom gradient (only valid for \textit{default}) \\
+               &         & flux      & fixed bottom flux boundary condition \\
+sbcbot[]       & n/a     & dirichlet & fixed top value boundary condition \\
+               &         & neumann   & fixed top gradient (only valid for \textit{default}) \\
+               &         & flux      & fixed top flux boundary condition \\
+sbot[]         & n/a     &           & value of the bottom boundary condition\\
+stop[]         & n/a     &           & value of the top boundary condition \\
+sbot\_2d\_list &         &           & list of scalars for which 2D binary field is provided for bottom bc value \\
+\hline \multicolumn{4}{l}{Only for swboundary = \textit{surface}:} \\ \hline
+z0m           & n/a     &           & roughness length of momentum [m] \\
+z0h           & n/a     &           & roughness length of scalars [m]\\
+ustar         & n/a     &           & value of the friction velocity [m~s$^{-1}$]\\
+\hline \multicolumn{4}{l}{Only for swboundary = \textit{patch} or \textit{surface\_patch}:} \\ \hline
+patch\_dim    & 2       &           & patch direction (1=$x$, 2=$x$ and $y$) \\
+patch\_xh     & 1       &           & heterogeneity size ($x$) [m]\\
+patch\_xr     & 1       &           & patch size ($x$) [m]\\
+patch\_xi     & 0       &           & interface sharpness ($x$) [m]\\
+patch\_xoffs  & 0       &           & offset patch within heterogeneity ($x$) [m]\\
+patch\_yh     & 1       &           & heterogeneity size ($y$) [m]\\
+patch\_yr     & 1       &           & patch size ($y$) [m]\\
+patch\_yi     & 0       &           & interface sharpness ($y$) [m]\\
+patch\_yoffs  & 0       &           & offset patch within heterogeneity ($y$) [m]\\
+\end{supertabular}
+
+\subsection*{[buffer] Buffer layer}
+\tablefirsthead{\hline NAME & DEFAULT VALUE & OPTIONS & DESCRIPTION \\ \hline}
+\tablehead{\multicolumn{4}{l}{\small\sl ... continued from previous page} \\  \hline NAME & DEFAULT VALUE & OPTIONS & DESCRIPTION \\ \hline}
+\tabletail{\hline \multicolumn{4}{l}{\small\sl Continued on next page ...} \\} 
+\tablelasttail{\hline}
+\begin{supertabular}{|L{\wname} C{\wdef} C{\wopt} L{\wdesc}|}
+swbuffer & 0   & 0 & disable buffer layer at the top of the domain \\
+         &     & 1 & enable buffer layer at the top of the domain \\
+swupdate & 0   & 0 & use the initial profile as the buffer reference \\
+         &     & 1 & take the actual mean profile as the buffer reference \\
+zstart   & n/a &   & starting height for buffer zone [m]\\
+sigma    & n/a &   & damping time scale of the buffer layer [s$^{-1}$]\\
+beta     & 2.  &   & exponent of the damping increase with height [-]\\
+\end{supertabular}
+
+\subsection*{[cross] Cross-section}
+\tablefirsthead{\hline NAME & DEFAULT VALUE & OPTIONS & DESCRIPTION \\ \hline}
+\tablehead{\multicolumn{4}{l}{\small\sl ... continued from previous page} \\  \hline NAME & DEFAULT VALUE & OPTIONS & DESCRIPTION \\ \hline}
+\tabletail{\hline \multicolumn{4}{l}{\small\sl Continued on next page ...} \\} 
+\tablelasttail{\hline}
+\begin{supertabular}{|L{\wname} C{\wdef} C{\wopt} L{\wdesc}|}
+swcross       & 0     & 0 & disable cross sections \\
+              &       & 1 & enable cross sections \\ 
+sampletime    & n/a   &   & sampling time step [s] \\
+xz            & empty &   & list of y locations at which xz-crosssection are taken \\
+yz            & empty &   & list of x locations at which yz-crosssection are taken \\
+xy            & empty &   & list of z locations at which xy-crosssection are taken \\
+crosslist     & empty &   & list of cross-section variables \\
+\end{supertabular}
+
+\subsection*{[diff] Diffusion}
+\tablefirsthead{\hline NAME & DEFAULT VALUE & OPTIONS & DESCRIPTION \\ \hline}
+\tablehead{\multicolumn{4}{l}{\small\sl ... continued from previous page} \\  \hline NAME & DEFAULT VALUE & OPTIONS & DESCRIPTION \\ \hline}
+\tabletail{\hline \multicolumn{4}{l}{\small\sl Continued on next page ...} \\} 
+\tablelasttail{\hline}
+\begin{supertabular}{|L{\wname} C{\wdef} C{\wopt} L{\wdesc}|}
+swdiff        & swspatialorder       & 0     & disable diffusion \\
+              &                      & 2     & 2nd-order diffusion \\
+              &                      & 4     & 4th-order diffusion \\
+              &                      & smag2 & 2nd-order Smagorinsky eddy diffusion \\
+dnmax         & 0.4                  &       & maximum diffusion number for numerical scheme \\
+\hline \multicolumn{4}{l}{Only for swdiff = \textit{smag2}:} \\ \hline
+cs            & 0.23                 &       & Smagorinsky constant \\
+tPr           & 1./3.                &       & turbulent Prandtl number \\
+\end{supertabular}
+
+\subsection*{[dump] 3D output}
+\tablefirsthead{\hline NAME & DEFAULT VALUE & OPTIONS & DESCRIPTION \\ \hline}
+\tablehead{\multicolumn{4}{l}{\small\sl ... continued from previous page} \\  \hline NAME & DEFAULT VALUE & OPTIONS & DESCRIPTION \\ \hline}
+\tabletail{\hline \multicolumn{4}{l}{\small\sl Continued on next page ...} \\} 
+\tablelasttail{\hline}
+\begin{supertabular}{|L{\wname} C{\wdef} C{\wopt} L{\wdesc}|}
+swdump        & 0     & 0 & disable writing 3d diagnostic fields \\
+              &       & 1 & enable writing 3d diagnostic fields \\ 
+sampletime    & n/a   &   & sampling time step [s] \\
+dumplist      & empty &   & list of diagnostic 3D fields \\
+\end{supertabular}
+
+\subsection*{[fields] Fields}
+\tablefirsthead{\hline NAME & DEFAULT VALUE & OPTIONS & DESCRIPTION \\ \hline}
+\tablehead{\multicolumn{4}{l}{\small\sl ... continued from previous page} \\  \hline NAME & DEFAULT VALUE & OPTIONS & DESCRIPTION \\ \hline}
+\tabletail{\hline \multicolumn{4}{l}{\small\sl Continued on next page ...} \\} 
+\tablelasttail{\hline}
+\begin{supertabular}{|L{\wname} C{\wdef} C{\wopt} L{\wdesc}|}
+slist         & empty &  & list of passive scalars \\
+visc          & n/a   &  & viscosity [m$^2$ s$^{-1}$] \\
+svisc[]       & n/a   &  & diffusivity of scalars [m$^2$ s$^{-1}$] \\
+rndseed       & 2     &  & seed of the randomnizer \\
+rndamp[]      & 0.    &  & amplitude of random perturbations [variable unit] \\
+rndz          & 0.    &  & maximum height of perturbations [m] \\
+rndexp        & 2.    &  & exponent of decay of perturbation \\
+vortexnpair   & 0     &  & number of rotating vortex pairs \\
+vortexamp     & 1.e-3 &  & amplitude of vortex pairs \\
+vortexaxis    & x     &  & axis around which the vortices are evolving \\
+\end{supertabular}
+
+\clearpage
+
+\subsection*{[force] Large scale forcings}
+\tablefirsthead{\hline NAME & DEFAULT VALUE & OPTIONS & DESCRIPTION \\ \hline}
+\tablehead{\multicolumn{4}{l}{\small\sl ... continued from previous page} \\  \hline NAME & DEFAULT VALUE & OPTIONS & DESCRIPTION \\ \hline}
+\tabletail{\hline \multicolumn{4}{l}{\small\sl Continued on next page ...} \\} 
+\tablelasttail{\hline}
+\begin{supertabular}{|L{\wname} C{\wdef} C{\wopt} L{\wdesc}|}
+swlspres      & 0     & 0     & disable large scale pressure forcing \\
+              &       & geo   & use geostrophic wind as large scale pressure force \\
+              &       & uflux & fix the mean flow velocity in the x-direction \\
+swls          & 0     & 0     & disable large scale source/sink \\
+              &       & 1     & enable large scale source/sink \\
+lslist        & empty &       & list of prognostic variables having large scale source/sink \\
+swwls         & 0     & 0     & disable large scale vertical velocity \\
+              &       & 1     & enable large scale vertical velocity \\
+fc            & n/a   &       & coriolis parameter [s$^{-1}$] \\
+uflux         & n/a   &       & mean flow velocity [m~s$^{-1}$] \\
+\end{supertabular}
+
+\subsection*{[grid] Grid}
+\tablefirsthead{\hline NAME & DEFAULT VALUE & OPTIONS & DESCRIPTION \\ \hline}
+\tablehead{\multicolumn{4}{l}{\small\sl ... continued from previous page} \\  \hline NAME & DEFAULT VALUE & OPTIONS & DESCRIPTION \\ \hline}
+\tabletail{\hline \multicolumn{4}{l}{\small\sl Continued on next page ...} \\} 
+\tablelasttail{\hline}
+\begin{supertabular}{|L{\wname} C{\wdef} C{\wopt} L{\wdesc}|}
+xsize          & n/a   &   & x-size of domain [m]\\
+ysize          & n/a   &   & y-size of domain [m]\\
+zsize          & n/a   &   & z-size of domain [m]\\
+itot           & n/a   &   & number of grid points in x-direction \\
+jtot           & n/a   &   & number of grid points in y-direction \\
+ktot           & n/a   &   & number of grid points in z-direction \\
+swspatialorder & n/a   & 2 & 2nd-order spatial discretization \\
+               &       & 4 & 4th-order spatial discretization \\
+utrans         & 0.    &   & translation velocity in x-direction [m s$^{-1}$] \\
+vtrans         & 0.    &   & translation velocity in y-direction [m s$^{-1}$] \\
+\end{supertabular}
+
+\subsection*{[master] Application control and communication}
+\tablefirsthead{\hline NAME & DEFAULT VALUE & OPTIONS & DESCRIPTION \\ \hline}
+\tablehead{\multicolumn{4}{l}{\small\sl ... continued from previous page} \\  \hline NAME & DEFAULT VALUE & OPTIONS & DESCRIPTION \\ \hline}
+\tabletail{\hline \multicolumn{4}{l}{\small\sl Continued on next page ...} \\} 
+\tablelasttail{\hline}
+\begin{supertabular}{|L{\wname} C{\wdef} C{\wopt} L{\wdesc}|}
+npx            & 1   & & number of processors in x-direction \\
+npy            & 1   & & number of processors in y-direction \\
+wallclocklimit & 1E8 & & maximum run duration in wall clock hours [h] \\
+\end{supertabular}
+
+\subsection*{[pres] Pressure}
+\tablefirsthead{\hline NAME & DEFAULT VALUE & OPTIONS & DESCRIPTION \\ \hline}
+\tablehead{\multicolumn{4}{l}{\small\sl ... continued from previous page} \\  \hline NAME & DEFAULT VALUE & OPTIONS & DESCRIPTION \\ \hline}
+\tabletail{\hline \multicolumn{4}{l}{\small\sl Continued on next page ...} \\} 
+\tablelasttail{\hline}
+\begin{supertabular}{|L{\wname} C{\wdef} C{\wopt} L{\wdesc}|}
+swpres        & swspatialorder        & 0 & disable pressure solver \\
+              &                       & 2 & 2nd-order pressure solver (tridiagonal solver) \\
+              &                       & 4 & 4th-order pressure solver (heptadiagonal solver) \\
+\end{supertabular}
+
+\subsection*{[stat] Statistics}
+\tablefirsthead{\hline NAME & DEFAULT VALUE & OPTIONS & DESCRIPTION \\ \hline}
+\tablehead{\multicolumn{4}{l}{\small\sl ... continued from previous page} \\  \hline NAME & DEFAULT VALUE & OPTIONS & DESCRIPTION \\ \hline}
+\tabletail{\hline \multicolumn{4}{l}{\small\sl Continued on next page ...} \\} 
+\tablelasttail{\hline}
+\begin{supertabular}{|L{\wname} C{\wdef} C{\wopt} L{\wdesc}|}
+swstats       & 0     & 0      & disable statistics \\
+sampletime    & n/a   &        & sampling time step [s] \\
+masklist      & empty & wplus  & conditional statistics $w$ > 0 \\
+              &       & wmin   & conditional statistics $w$ < 0\\
+              &       & ql     & conditional statistics $q_\mathrm{l}$ > 0\\
+              &       & qlcore & conditional statistics $q_\mathrm{l}$ > 0 and $B$ > 0\\
+\end{supertabular}
+
+\subsection*{[thermo] Thermodynamics}
+\tablefirsthead{\hline NAME & DEFAULT VALUE & OPTIONS & DESCRIPTION \\ \hline}
+\tablehead{\multicolumn{4}{l}{\small\sl ... continued from previous page} \\  \hline NAME & DEFAULT VALUE & OPTIONS & DESCRIPTION \\ \hline}
+\tabletail{\hline \multicolumn{4}{l}{\small\sl Continued on next page ...} \\} 
+\tablelasttail{\hline}
+\begin{supertabular}{|L{\wname} C{\wdef} C{\wopt} L{\wdesc}|}
+swthermo      & 0         & 0     & disable thermodynamics \\
+              &           & dry   & dry thermodynamics (\textit{"th"}) \\
+              &           & moist & moist thermodynamics (\textit{"thl" + "qt"}) \\
+              &           & buoy  & buoyancy thermodynamics including option for slope (\textit{"b"})\\
+alpha         & n/a       &       & optional slope angle [radians]\\
+N2            & n/a       &       & Brunt-V\"{a}is\"{a}l\"{a} frequency [1/s] (req. with alpha)\\
+swbasestate    & n/a   & boussinesq & constant density and reference temperature \\
+               &       & anelastic  & anelastic approximation (Bannon, 1996) \\
+thvref0       & n/a       &       & reference virtual potential temperature [K] (moist Boussinesq) \\
+thref0        & n/a       &       & reference potential temperature [K] (dry Boussinesq) \\
+ps            & n/a       &       & surface pressure [Pa] \\
+swupdatebasestate & n/a   & 0     & use initial hydrostatic pressure in $q_l$ calculation \\
+              &           & 1     & update hydrostatic pressure in $q_l$ calculation \\         
+\end{supertabular}
+
+\subsection*{[timeloop] Time}
+\tablefirsthead{\hline NAME & DEFAULT VALUE & OPTIONS & DESCRIPTION \\ \hline}
+\tablehead{\multicolumn{4}{l}{\small\sl ... continued from previous page} \\  \hline NAME & DEFAULT VALUE & OPTIONS & DESCRIPTION \\ \hline}
+\tabletail{\hline \multicolumn{4}{l}{\small\sl Continued on next page ...} \\} 
+\tablelasttail{\hline}
+\begin{supertabular}{|L{\wname} C{\wdef} C{\wopt} L{\wdesc}|}
+starttime     & n/a   &       & start time of simulation [s] \\
+endtime       & n/a   &       & end time of simulation [s] \\
+savetime      & n/a   &       & interval for saving restart files [s] \\
+postproctime  & n/a   &       & time step of postprocessing procedure \\
+adaptivestep  & true  & true  & enable adaptive time stepping \\
+              &       & false & disable adaptive time stepping \\
+dt            & 0.1   &       & time step [s] (only valid if adaptivestep = false) \\
+dtmax         & dbig  &       & maximum time step [s] \\
+rkorder       & 3     & 3     & Runge-Kutta 3rd-order accuracy, 3 steps \\
+              &       & 4     & Runge-Kutta 4th-order accuracy, 5 steps \\
+outputiter    & 10    &       & frequency of diagnostic output to $<$casename$>$.out \\
+iotimeprec    & 0     &       & precision of saving of time in 10-power (i.e. -1 = 0.1, etc.) \\
+\end{supertabular}
+
+\end{document}
