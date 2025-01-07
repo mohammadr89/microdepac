@@ -1,0 +1,3 @@
+[submodule "microhh/cases"]
+	path = microhh/cases
+	url = https://github.com/mohammadr89/microhh-cases.git
