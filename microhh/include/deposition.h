@@ -39,7 +39,7 @@ template<typename> class Stats;
 template<typename> class Boundary_surface_lsm;
 
 /**
- * Class that creates a deposition liniked to the chemistry
+ * Class that creates a deposition linked to the chemistry
  */
 
 enum class Deposition_type {disabled, enabled, simple, average};
@@ -49,7 +49,7 @@ struct Deposition_tile
 {
     std::string long_name;    // Descriptive name of tile
     // Land surface
-    std::vector<TF> vdnh3;     // deposition velocity of ozone (m s-1)
+    std::vector<TF> vdnh3;    // deposition velocity of NH3 (m s-1)  // Modified description for NH3
 };
 
 template<typename TF>
@@ -67,7 +67,7 @@ class Deposition
         void update_time_dependent(Timeloop<TF>&, Boundary<TF>&,
              TF*); ///< Update the time dependent deposition parameters.
 
-        const TF get_vd(const std::string&) const;                  ///< get the standard vd value (nh3, no, no2, ..)
+        const TF get_vd(const std::string&) const;                  ///< get the standard vd value (nh3)
         void get_tiled_mean(TF*, std::string, TF, const TF*, const TF*, const TF*);
         void update_vd_water(TF*, std::string, const TF*, const TF*, const int*, const TF*, const TF*);
         void exec_cross(Cross<TF>&, unsigned long);
@@ -85,12 +85,12 @@ class Deposition
 
         std::shared_ptr<Boundary_surface_lsm<TF>> boundary_surface_lsm;
 
-        TF deposition_var;   // here put the local vars
+        // Original parameters
+        TF deposition_var;
         TF henry_so2;
         TF rsoil_so2;
         TF rwat_so2;
         TF rws_so2;
-        //TF lai;
         std::vector<TF> rmes;
         std::vector<TF> rsoil;
         std::vector<TF> rcut;
@@ -101,7 +101,29 @@ class Deposition
         std::vector<TF> henry;
         std::vector<TF> f0;
 
-        TF vd_nh3;
+        // Added: DEPAC variables for NH3 deposition
+        TF vd_nh3;            // NH3 deposition velocity
+        TF rsoil_eff_out;     // Effective soil resistance from DEPAC
+        TF gsoil_eff_out;     // Effective soil conductance from DEPAC 
+        TF rc_eff;            // Effective canopy resistance from DEPAC
+        TF rc_tot;            // Total canopy resistance from DEPAC
+        TF ccomp_tot;         // Compensation point from DEPAC
+
+        // DEPAC configuration parameters
+        TF glrad;             // Global radiation (W/m2)
+        TF sinphi;            // Sine of solar elevation
+        TF temperature;       // Air temperature (K)
+        TF rh;               // Relative humidity (%)
+        TF sai;              // Stem area index (m2/m2)
+        TF lat;              // Latitude (degrees)
+        int day_of_year;     // Day of year
+        int nwet;            // Surface wetness indicator
+        int lu;              // Land use type
+        int iratns;          // NH3 compensation point option
+        TF hlaw;             // Henry's law constant
+        TF react;            // Reactivity factor
+        TF c_ave_prev_nh3;   // Previous NH3 concentration (μg/m3)
+        TF catm;             // Atmospheric NH3 concentration (μg/m3)
 
         std::vector<std::string> deposition_tile_names {"veg", "soil" ,"wet"};
         Deposition_tile_map<TF> deposition_tiles;

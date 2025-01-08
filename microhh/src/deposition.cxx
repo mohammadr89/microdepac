@@ -220,7 +220,7 @@ namespace
 			float ccomp_tot;
 			float rc_eff;
 			float gsoil_eff_out;
-			//float rsoil_eff;
+			float rsoil_eff_out;
 			int status;
 
 			for (int j=jstart; j<jend; ++j)
@@ -273,7 +273,7 @@ namespace
 			float ccomp_tot;
 			float rc_eff;
 			float gsoil_eff_out;
-			//float rsoil_eff;
+			float rsoil_eff_out;
 			int status;
 
 			for (int j=jstart; j<jend; ++j)
@@ -335,7 +335,7 @@ namespace
 			float ccomp_tot;
 			float rc_eff;
 			float gsoil_eff_out;
-			//float rsoil_eff;
+			float rsoil_eff_out;
 			int status;
 
 			std::vector<TF> rb_veg(ntrac_vd, (TF)0.0);
