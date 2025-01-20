@@ -1,0 +1,17 @@
+/home/mohamad/ammonia/microhh/build/CMakeFiles/edit_cache.dir
+/home/mohamad/ammonia/microhh/build/CMakeFiles/rebuild_cache.dir
+/home/mohamad/ammonia/microhh/build/rte-rrtmgp-cpp/src_kernels/CMakeFiles/rte_rrtmgp_kernels.dir
+/home/mohamad/ammonia/microhh/build/rte-rrtmgp-cpp/src_kernels/CMakeFiles/edit_cache.dir
+/home/mohamad/ammonia/microhh/build/rte-rrtmgp-cpp/src_kernels/CMakeFiles/rebuild_cache.dir
+/home/mohamad/ammonia/microhh/build/rte-rrtmgp-cpp/src/CMakeFiles/rte_rrtmgp.dir
+/home/mohamad/ammonia/microhh/build/rte-rrtmgp-cpp/src/CMakeFiles/edit_cache.dir
+/home/mohamad/ammonia/microhh/build/rte-rrtmgp-cpp/src/CMakeFiles/rebuild_cache.dir
+/home/mohamad/ammonia/microhh/build/src/CMakeFiles/depac.dir
+/home/mohamad/ammonia/microhh/build/src/CMakeFiles/microhhc.dir
+/home/mohamad/ammonia/microhh/build/src/CMakeFiles/edit_cache.dir
+/home/mohamad/ammonia/microhh/build/src/CMakeFiles/rebuild_cache.dir
+/home/mohamad/ammonia/microhh/build/main/CMakeFiles/microhh.dir
+/home/mohamad/ammonia/microhh/build/main/CMakeFiles/edit_cache.dir
+/home/mohamad/ammonia/microhh/build/main/CMakeFiles/rebuild_cache.dir
+/home/mohamad/ammonia/microhh/build/kpp/CMakeFiles/edit_cache.dir
+/home/mohamad/ammonia/microhh/build/kpp/CMakeFiles/rebuild_cache.dir

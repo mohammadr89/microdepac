@@ -24,7 +24,6 @@ set(DEPAC_SOURCES
     ${CMAKE_SOURCE_DIR}/depac_lib/go.f90
     ${CMAKE_SOURCE_DIR}/depac_lib/le_drydepos_gas_depac.f90
     ${CMAKE_SOURCE_DIR}/depac_lib/wrapper_depac.f90
-    ${CMAKE_SOURCE_DIR}/depac_lib/lai_calculator.f90
 )
 
 # Create DEPAC library

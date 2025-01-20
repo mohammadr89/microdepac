@@ -1,0 +1,30 @@
+#!/bin/bash
+#SBATCH --job-name=plume_chem
+# Log file `stdout` and `stderr` (%j is replaced with a unique job ID):
+#SBATCH --output=mhh-%j.out
+#SBATCH --error=mhh-%j.err
+
+# Thin CPU partition (https://servicedesk.surfsara.nl/wiki/display/WIKI/Snellius+usage+and+accounting):
+#SBATCH --partition=genoa
+
+# Snellius genoa has 16 cores/node. Slurm automatically determines the required number of nodes:
+#SBATCH -n 16
+#SBATCH --cpus-per-task=1
+#SBATCH --ntasks-per-core=1
+# Maximum wall clock time:
+#SBATCH -t 1:00:00
+
+# Load required modules:
+
+module purge
+module load 2023
+module load CMake/3.26.3-GCCcore-12.3.0
+
+# GCC
+module load foss/2023a
+module load netCDF/4.9.2-gompi-2023a
+module load CUDA/12.1.1
+module load Clang/16.0.6-GCCcore-12.3.0
+
+srun ./microhh init plume_chem
+srun ./microhh run plume_chem
