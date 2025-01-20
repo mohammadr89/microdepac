@@ -1,2 +1,0 @@
-/usr/bin/ar qc ../../../depac_lib/librte_rrtmgp.a CMakeFiles/rte_rrtmgp.dir/Aerosol_optics.cpp.o CMakeFiles/rte_rrtmgp.dir/Cloud_optics.cpp.o CMakeFiles/rte_rrtmgp.dir/Fluxes.cpp.o CMakeFiles/rte_rrtmgp.dir/Gas_concs.cpp.o CMakeFiles/rte_rrtmgp.dir/Gas_optics_rrtmgp.cpp.o CMakeFiles/rte_rrtmgp.dir/Optical_props.cpp.o CMakeFiles/rte_rrtmgp.dir/Rte_lw.cpp.o CMakeFiles/rte_rrtmgp.dir/Rte_sw.cpp.o CMakeFiles/rte_rrtmgp.dir/Source_functions.cpp.o
-/usr/bin/ranlib ../../../depac_lib/librte_rrtmgp.a
