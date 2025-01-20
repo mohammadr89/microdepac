@@ -1,0 +1,6 @@
+# The fortran modules provided by this target.
+provides
+ depac_wrapper_test.mod
+ go.mod
+ lai_calculator.mod
+ le_drydepos_gas_depac.mod

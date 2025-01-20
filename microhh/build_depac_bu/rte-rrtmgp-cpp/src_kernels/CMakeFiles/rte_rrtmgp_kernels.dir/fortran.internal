@@ -1,0 +1,9 @@
+# The fortran modules provided by this target.
+provides
+ mo_fluxes_broadband_kernels.mod
+ mo_fluxes_byband.mod
+ mo_gas_optics_rrtmgp_kernels.mod
+ mo_optical_props_kernels.mod
+ mo_rte_kind.mod
+ mo_rte_solver_kernels.mod
+ mo_rte_util_array.mod
