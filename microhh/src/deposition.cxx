@@ -15,6 +15,41 @@
  * [0] = NH3
  */
 
+/*
+ *Integration of DEPAC Resistance Calculations in MicroHH
+ *
+ *1. Problem:
+ *   - MicroHH uses IFS land surface scheme with vegetation, soil, and wet surface tiles.
+ *   - DEPAC resistance calculations need integration while keeping IFS's Ra and Rb.
+ *   - Vegetation types (grass vs forest) were not properly distinguished by LAI.
+ *
+ *2. Key Changes:
+ *   a) LAI-Based Land Use Determination:
+ *      - Grass: LAI ≤ 3.5 (land use = 1, SAI = LAI)
+ *      - Forest: LAI > 3.5 (land use = 4, SAI = LAI + 1.0)
+ *
+ *   b) Unit Conversion:
+ *      - mol/mol → µg/m³: `conc_ugm3 = conc_molmol * pressure * M_NH3 / (R * T) * 1e6`
+ *      - mol/mol → ppb: `conc_ppb = conc_molmol * 1e9`
+ *
+ *3. Implementation:
+ *   - Vegetation (lu_type = "veg"): LAI-based land use and SAI applied in DEPAC.
+ *   - Soil (lu_type = "soil"): No changes, fixed soil parameters.
+ *   - Wet (lu_type = "wet"): Split into wet vegetation and wet soil.
+ *      - Wet vegetation follows the same rules as dry vegetation.
+ *
+ *4. DEPAC Integration:
+ *   - Vegetation presence: `LAI_present = (lai > 0.0)`
+ *   - Stomatal conductance: `Gsto = lai * gsto`
+ *   - Total resistance: `1/RC = 1/Rstom + 1/Rw + 1/Rsoil_eff`
+ *
+ *5. Benefits:
+ *   - Accurate vegetation parameters based on LAI.
+ *   - Differentiates grass vs forest with proper resistance scaling.
+ *   - Handles both dry and wet conditions effectively.
+*/
+
+
 //#include <cstdio>
 #include <cstdio>
 #include <iostream>
@@ -199,6 +234,17 @@ namespace {
                     
                     if (fraction[ij] < (TF)1e-12)
                         continue;
+            	    // NEW: Automatic determination of land use type and SAI based on LAI
+            	    // This allows DEPAC to use different parameters for grass vs forest
+            	    int local_lu;
+            	    TF local_sai;
+            	    if (lai[ij] <= 3.5) {
+            	        local_lu = 1;  // grass
+            	        local_sai = lai[ij];  // For grass, SAI = LAI
+            	    } else {
+            	        local_lu = 4;  // coniferous forest
+            	        local_sai = lai[ij] + 1.0;  // For forest, add stem area
+            	    }
 
                     // Keep IFS Ra and use vegetation Rb scaling
                     const TF rb = TF(2.0) / (ckarman * ustar[ij]) * diff_scl[0];
@@ -219,9 +265,11 @@ namespace {
                         sinphi,
                         rh,
                         lai[ij],
-                        sai,
+                        //sai,
+	                local_sai,        // CHANGED: Use calculated SAI
                         0,  // nwet = 0 for dry vegetation
-                        lu,
+                        //lu,
+	                local_lu,         // CHANGED: Use LAI-determined land use type
                         iratns,
                         &rc_tot,
                         &ccomp_tot,
@@ -309,6 +357,17 @@ namespace {
                     int status;
                     
                     if (c_veg[ij] > 0) {
+		        // NEW: Added same LAI-based determination for wet vegetation
+                	int local_lu;
+                	TF local_sai;
+                	if (lai[ij] <= 3.5) {
+                	    local_lu = 1;  // grass
+                	    local_sai = lai[ij];  // For grass, SAI = LAI
+                	} else {
+                	    local_lu = 4;  // coniferous forest
+                	    local_sai = lai[ij] + 1.0;  // For forest, add stem area
+                	}
+
                         // Wet vegetation case
                         const TF rb = TF(2.0) / (ckarman * ustar[ij]) * diff_scl[0];
                         
@@ -322,9 +381,11 @@ namespace {
                             sinphi,
                             rh,
                             lai[ij],
-                            sai,
+                            //sai,
+	                    local_sai,        // CHANGED: Use calculated SAI
                             1,  // nwet = 1 for wet conditions
-                            lu,
+                            //lu,
+	                    local_lu,         // CHANGED: Use LAI-determined land use type
                             iratns,
                             &rc_tot,
                             &ccomp_tot,
