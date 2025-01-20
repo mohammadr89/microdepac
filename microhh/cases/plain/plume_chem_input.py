@@ -19,9 +19,9 @@ Settings.
 float_type = "f8"
 
 # EDITED: Updated domain sizes as requested
-xsize = 3200   # Changed from 3200
-ysize = 3200   # Changed from 3200
-zsize = 4000   # Changed from 3200
+xsize = 3200   
+ysize = 3200   
+zsize = 4032   
 
 # EDITED: Updated grid points as requested
 itot = 32     # Changed from 32
@@ -343,8 +343,8 @@ if sw_plume_rise:
 
 if (sw_land_surface):
     # Define block sizes for x and y directions
-    blocksize_i = 4  # Size of block in x direction (in grid points)
-    blocksize_j = 4  # Size of block in y direction (in grid points)
+    blocksize_i = 1  # Size of block in x direction (in grid points)
+    blocksize_j = 1  # Size of block in y direction (in grid points)
     
     # Calculate size of each block in total grid points
     block_points = blocksize_i * blocksize_j  # Total grid points in one block
@@ -359,17 +359,17 @@ if (sw_land_surface):
     print(f"Maximum possible regions: {region_sizex} (x) × {region_sizey} (y)")
 
     # EDITED: Define boundaries for the three regions (in grid points)
-    # Each grid point represents 58m (11136/192 = 58)
+    
     # Adjusting boundaries to align with block size
-    grass_in_end = (10 // blocksize_i) * blocksize_i      # Align to block boundary (near 1508m)
-    forest_end = (21 // blocksize_i) * blocksize_i       # Align to block boundary (near 6496m)
-    # grass_out continues to end (192 * 58 = 11136m)
+    grass_in_end = (10 // blocksize_i) * blocksize_i     
+    forest_end = (21 // blocksize_i) * blocksize_i       
+    # grass_out continues to end (32 * 100 = 3200m)
     
     # Print information about domain setup
     print(f"\nDomain setup (aligned to block boundaries):")
-    print(f"Grass_in region: 0 to {grass_in_end*58}m (0 to {grass_in_end} points)")
-    print(f"Forest region: {grass_in_end*58}m to {forest_end*58}m ({grass_in_end} to {forest_end} points)")
-    print(f"Grass_out region: {forest_end*58}m to {itot*58}m ({forest_end} to {itot} points)")
+    print(f"Grass_in region: 0 to {grass_in_end*100}m (0 to {grass_in_end} points)")
+    print(f"Forest region: {grass_in_end*100}m to {forest_end*100}m ({grass_in_end} to {forest_end} points)")
+    print(f"Grass_out region: {forest_end*100}m to {itot*100}m ({forest_end} to {itot} points)")
     
     ##########################################################
     # Create and save mask files according to MicroHH format
@@ -420,9 +420,9 @@ if (sw_land_surface):
         ls[variable][~mask_forest_bool] = grass      # Grass values (both in and out)
     
     # Set surface properties for forest and grass regions
-    set_value("c_veg", forest=1.0, grass=1.0)      # Vegetation fraction
-    set_value("lai", forest=6.0, grass=0.1)        # Leaf Area Index
-    set_value("water_mask", forest=0, grass=0)     # No water surfaces
+    set_value("c_veg", forest=1.0, grass=0.0)      # Vegetation fraction
+    set_value("lai", forest=6.0, grass=0.0)        # Leaf Area Index
+    set_value("water_mask", forest=0, grass=1)     # No water surfaces
 
     # c_veg (Vegetation Cover Fraction)
 

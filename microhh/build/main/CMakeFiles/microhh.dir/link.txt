@@ -1,0 +1,1 @@
+/usr/bin/mpicxx -std=c++17 -O3 -march=native -rdynamic CMakeFiles/microhh.dir/microhh.cxx.o -o ../microhh  ../../depac_lib/libmicrohhc.a ../../depac_lib/librte_rrtmgp_kernels.a ../../depac_lib/librte_rrtmgp.a -lfftw3 -lfftw3f -lnetcdf -lhdf5_serial -lm ../../depac_lib/libdepac.a -lgfortran ../../depac_lib/librte_rrtmgp_kernels.a -lgfortran -lquadmath 

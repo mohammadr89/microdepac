@@ -1,0 +1,2 @@
+/usr/bin/ar qc ../../depac_lib/libdepac.a CMakeFiles/depac.dir/__/depac_lib/go.f90.o CMakeFiles/depac.dir/__/depac_lib/le_drydepos_gas_depac.f90.o CMakeFiles/depac.dir/__/depac_lib/wrapper_depac.f90.o
+/usr/bin/ranlib ../../depac_lib/libdepac.a

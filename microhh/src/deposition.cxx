@@ -132,18 +132,18 @@ namespace {
 	        const int jstart, const int jend,
 	        const int icells)
 	{
-	    // Calculate sum and count
-	    TF n_dep = (TF)0.0;
-	    TF sum_dep = (TF)0.0;
+	    //// Calculate sum and count
+	    //TF n_dep = (TF)0.0;
+	    //TF sum_dep = (TF)0.0;
 	
-	    for (int j=jstart; j<jend; ++j)
-	        #pragma ivdep
-	        for (int i=istart; i<iend; ++i)
-	        {
-	            const int ij = i + j*icells;
-	            sum_dep += fld[ij];
-	            n_dep += 1.0;
-	        }
+	    //for (int j=jstart; j<jend; ++j)
+	    //    #pragma ivdep
+	    //    for (int i=istart; i<iend; ++i)
+	    //    {
+	    //        const int ij = i + j*icells;
+	    //        sum_dep += fld[ij];
+	    //        n_dep += 1.0;
+	    //    }
 	
 	    //// Calculate and apply average
 	    //TF avg_dep = sum_dep / n_dep;

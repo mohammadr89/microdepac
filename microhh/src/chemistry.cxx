@@ -204,8 +204,8 @@ void Chemistry<TF>::exec_stats(const int iteration, const double time, Stats<TF>
 
 	stats.calc_stats_2d("flux_nh3", flux_nh3, no_offset); //added for nh3_flux
 
-	//// Reset the periodic flux after saving to stats
-    	//std::fill(flux_nh3.begin(), flux_nh3.end(), TF(0));
+	// Reset the periodic flux after saving to stats
+    	std::fill(flux_nh3.begin(), flux_nh3.end(), TF(0));
  
         // sum of all PEs:
         // printf("trfa: %13.4e iteration: %i time: %13.4e \n", trfa,iteration,time);
@@ -422,7 +422,8 @@ void Chemistry<TF>::create(
     // add cross-sections
     if (cross.get_switch())
     {
-        std::vector<std::string> allowed_crossvars = {"vdnh3"};
+        //std::vector<std::string> allowed_crossvars = {"vdnh3"};
+        std::vector<std::string> allowed_crossvars = {"vdnh3","flux_nh3"};
         cross_list = cross.get_enabled_variables(allowed_crossvars);
 
         // `deposition->create()` only creates cross-sections.
