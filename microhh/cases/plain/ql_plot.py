@@ -3,8 +3,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 # Read the netCDF file
-#ds = nc.Dataset('plume_chem.default.0000000.nc')
-ds = nc.Dataset('plume_chem.default.0010800.nc')
+ds = nc.Dataset('plume_chem.default.0000000.nc')
+#ds = nc.Dataset('plume_chem.default.0010800.nc')
 
 # Get the variables
 z = ds.variables['z'][:]  # height levels

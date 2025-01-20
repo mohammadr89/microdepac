@@ -303,7 +303,7 @@ z0 = 0
 # strength_co  = 0.0  / 9. / MCO    # kmol(CO) s-1
 # strength_nh3  = 1.0  / 9. / MNH3    # kmol(NH3) s-1
 # strength_nh3  = 1.48950934102587E-06  # kmol(NH3) s-1 (equivalent to one barn of 80 cows)
-strength_nh3  = 0.0
+strength_nh3  = 0.001
 
 # Emission of heat and moisture. Numbers are from:
 # Effective pollutant emission heights for atmospheric transport modelling based on real-world information
@@ -420,9 +420,9 @@ if (sw_land_surface):
         ls[variable][~mask_forest_bool] = grass      # Grass values (both in and out)
     
     # Set surface properties for forest and grass regions
-    set_value("c_veg", forest=1.0, grass=0.0)      # Vegetation fraction
-    set_value("lai", forest=6.0, grass=0.0)        # Leaf Area Index
-    set_value("water_mask", forest=0, grass=1)     # No water surfaces
+    set_value("c_veg", forest=1.0, grass=1.0)      # Vegetation fraction
+    set_value("lai", forest=6.0, grass=3.0)        # Leaf Area Index
+    set_value("water_mask", forest=0, grass=0)     # No water surfaces
 
     # c_veg (Vegetation Cover Fraction)
 
@@ -451,8 +451,8 @@ if (sw_land_surface):
     ls["gD"][:,:] = 0.6               # Vegetation water stress parameter
     ls["rs_veg_min"][:,:] =300        # Minimum vegetation surface resistance
     ls["rs_soil_min"][:,:] = 200      # Minimum soil surface resistance
-    ls["lambda_stable"][:,:] = 20     # Skin conductivity for stable conditions (W/m²/K) 
-    ls["lambda_unstable"][:,:] = 20   # Skin conductivity for unstable conditions (W/m²/K) 
+    ls["lambda_stable"][:,:] = 10     # Skin conductivity for stable conditions (W/m²/K) 
+    ls["lambda_unstable"][:,:] = 10   # Skin conductivity for unstable conditions (W/m²/K) 
     ls["cs_veg"][:,:] = 0.5           # Vegetation heat capacity
     ls["t_bot_water"][:,:] = 298     # Bottom water temperature (K)
     
