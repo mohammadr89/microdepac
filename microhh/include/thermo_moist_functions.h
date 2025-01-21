@@ -203,10 +203,9 @@ namespace Thermo_moist_functions
             qs, // qs
         };
 
-	//Disabled cloud formation
-        //// Calculate if q-qs(Tl) <= 0. If so, return 0. Else continue with saturation adjustment.
-        //if (qt-ans.qs <= TF(0.))
-        //    return ans;
+        // Calculate if q-qs(Tl) <= 0. If so, return 0. Else continue with saturation adjustment.
+        if (qt-ans.qs <= TF(0.))
+            return ans;
 
         /* Saturation adjustment solver.
          * Root finding function is f(T) = T - tnr - Lv/cp*qt + alpha_w * Lv/cp*qs(T) + alpha_i*Ls/cp*qs(T)

@@ -88,7 +88,6 @@ namespace
             const TF* const restrict rhoref,
             TF* restrict rfa,
 	    TF* restrict flux_nh3,  // New parameter for flux
-	    TF* restrict total_flux_nh3,  // total flux
             TF& trfa,
             const TF dt,
             const TF sdt,
@@ -136,11 +135,9 @@ namespace
                         {
                     	   // Calculate and accumulate flux for this RK3 step
                     	   // Note: flux is accumulated (+=) and scaled by sdt
-			   TF flux = (-1.0) * 1e3 * vdnh3[ij] * nh3[ijk] * rhoref[k] * xmair_i * sdt; // [mol(NH3) m-2 s-1]
+			   //TF flux = (-1.0) * vdnh3[ij] * nh3[ijk] * rhoref[k] * xmair_i * xmnh3 * sdt; // [kg(NH3) m-2 s-1]
+			   TF flux = (-1.0) * 1.0e3 * vdnh3[ij] * nh3[ijk] * rhoref[k] * xmair_i * sdt; // [mol(NH3) m-2 s-1 * sdt!!!]
 			   flux_nh3[ij] += flux;        // For period statistics
-			   total_flux_nh3[ij] += flux;  // For entire simulation
-
-			   //flux_nh3[ij] = (-1.0) * 1e12 * vdnh3[ij] * nh3[ijk] * rhoref[k] * xmair_i * xmnh3 * sdt; // [ng(NH3) m-2 s-1]
 
 		  	   decay = vdnh3[ij]*dzi[k] + lti;   // 1/s
    			}
@@ -175,7 +172,7 @@ Chemistry<TF>::Chemistry(Master& masterin, Grid<TF>& gridin, Fields<TF>& fieldsi
 
     sw_chemistry = inputin.get_item<bool>("chemistry", "swchemistry", "", false);
     //lifetime     = inputin.get_item<TF>("chemistry", "lifetime", "", (TF)72000);  // seconds (20 hour default)
-    lifetime     = inputin.get_item<TF>("chemistry", "lifetime", "", (TF)21600);  // seconds (6 hours default for NH3)
+    lifetime     = inputin.get_item<TF>("chemistry", "lifetime", "", (TF)1e30);  // seconds 
     master.print_message("Lifetime of the tracer:  = %13.5e s \n", lifetime);
 
     if (!sw_chemistry)
@@ -206,9 +203,8 @@ void Chemistry<TF>::exec_stats(const int iteration, const double time, Stats<TF>
         stats.calc_stats_2d("vdnh3"   , vdnh3,   no_offset);
 
 	stats.calc_stats_2d("flux_nh3", flux_nh3, no_offset); //added for nh3_flux
-	stats.calc_stats_2d("total_flux_nh3", total_flux_nh3, no_offset);
 
-	// Reset only the periodic flux after saving to stats, keep total flux accumulating
+	// Reset the periodic flux after saving to stats
     	std::fill(flux_nh3.begin(), flux_nh3.end(), TF(0));
  
         // sum of all PEs:
@@ -265,9 +261,6 @@ void Chemistry<TF>::init(Input& inputin)
     // added for nh3_flux (initialize nh3_flux arrays)
     flux_nh3.resize(gd.ijcells);
     std::fill(flux_nh3.begin(), flux_nh3.end(), TF(0));
-
-    total_flux_nh3.resize(gd.ijcells);
-    std::fill(total_flux_nh3.begin(), total_flux_nh3.end(), TF(0));
 
     // initialize deposition routine:
     deposition-> init(inputin);
@@ -424,14 +417,13 @@ void Chemistry<TF>::create(
         // used in chemistry:
         stats.add_time_series("vdnh3", "NH3 deposition velocity", "m s-1", group_named);
 	stats.add_time_series("flux_nh3", "NH3 surface flux", "mol(NH3) m-2 s-1", group_named);
-	stats.add_time_series("total_flux_nh3", "NH3 total accumulated surface flux", "mol(NH3) m-2", group_named);
     }
 
     // add cross-sections
     if (cross.get_switch())
     {
-        // std::vector<std::string> allowed_crossvars = {"vdnh3"};
-	std::vector<std::string> allowed_crossvars = {"vdnh3" , "flux_nh3" , "total_flux_nh3"};
+        //std::vector<std::string> allowed_crossvars = {"vdnh3"};
+        std::vector<std::string> allowed_crossvars = {"vdnh3","flux_nh3"};
         cross_list = cross.get_enabled_variables(allowed_crossvars);
 
         // `deposition->create()` only creates cross-sections.
@@ -515,7 +507,6 @@ void Chemistry<TF>::exec(Thermo<TF>& thermo,double sdt,double dt)
         fields.rhoref.data(),
         rfa.data(),
 	flux_nh3.data(),  //added for nh3_flux
-	total_flux_nh3.data(),  // added for total flux
         trfa,
         dt, sdt, lifetime,
         gd.istart, gd.iend,
@@ -535,3 +526,4 @@ void Chemistry<TF>::exec(Thermo<TF>& thermo,double sdt,double dt)
 
 template class Chemistry<double>;
 //:template class Chemistry<float>;
+
