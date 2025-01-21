@@ -1,25 +1,3 @@
-/*
- * MicroHH
- * Copyright (c) 2011-2020 Chiel van Heerwaarden
- * Copyright (c) 2011-2020 Thijs Heus
- * Copyright (c) 2014-2020 Bart van Stratum
- *
- * This file is part of MicroHH
- *
- * MicroHH is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
-
- * MicroHH is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
-
- * You should have received a copy of the GNU General Public License
- * along with MicroHH.  If not, see <http://www.gnu.org/licenses/>.
- */
-
 #ifndef DEPOSITION_H
 #define DEPOSITION_H
 
@@ -30,17 +8,13 @@
 #include "boundary_surface_lsm.h"
 #include "boundary.h"
 
-
 class Master;
 class Input;
 template<typename> class Grid;
 template<typename> class Fields;
 template<typename> class Stats;
+template<typename> class Cross;
 template<typename> class Boundary_surface_lsm;
-
-/**
- * Class that creates a deposition liniked to the chemistry
- */
 
 enum class Deposition_type {disabled, enabled, simple, average};
 
@@ -49,7 +23,7 @@ struct Deposition_tile
 {
     std::string long_name;    // Descriptive name of tile
     // Land surface
-    std::vector<TF> vdnh3;     // deposition velocity of ozone (m s-1)
+    std::vector<TF> vdnh3;    // Deposition velocity of NH3 (m s-1)
 };
 
 template<typename TF>
@@ -59,22 +33,24 @@ template<typename TF>
 class Deposition
 {
     public:
-        Deposition(Master&, Grid<TF>&, Fields<TF>&, Input&); ///< Constructor of the chemistry class.
-        ~Deposition();                                       ///< Destructor  of the chemistry class.
+        Deposition(Master&, Grid<TF>&, Fields<TF>&, Input&);
+        ~Deposition();
 
-        void init(Input&);                 ///< Initialize the arrays that contain the profiles.
+        void init(Input&);
         void create(Stats<TF>&, Cross<TF>&);
-        void update_time_dependent(Timeloop<TF>&, Boundary<TF>&,
-             TF*); ///< Update the time dependent deposition parameters.
+        void update_time_dependent(
+            Timeloop<TF>&, 
+            Boundary<TF>&,
+            TF* restrict vdnh3);  // Modified for NH3 only
 
-        const TF get_vd(const std::string&) const;                  ///< get the standard vd value (nh3, no, no2, ..)
+        const TF get_vd(const std::string&) const;
         void get_tiled_mean(TF*, std::string, TF, const TF*, const TF*, const TF*);
         void update_vd_water(TF*, std::string, const TF*, const TF*, const int*, const TF*, const TF*);
         void exec_cross(Cross<TF>&, unsigned long);
-        void spatial_avg_vd(TF*);                           //MAQ_AV_21042022+ added spatial_avg_vd
+        void spatial_avg_vd(TF*);
 
     protected:
-        std::vector<std::string> cross_list;         // List of active cross variables
+        std::vector<std::string> cross_list;
 
     private:
         Master& master;
@@ -85,12 +61,14 @@ class Deposition
 
         std::shared_ptr<Boundary_surface_lsm<TF>> boundary_surface_lsm;
 
-        TF deposition_var;   // here put the local vars
+        // Base parameters
+        TF deposition_var;
         TF henry_so2;
         TF rsoil_so2;
         TF rwat_so2;
         TF rws_so2;
-        //TF lai;
+
+        // Resistance and physical parameters
         std::vector<TF> rmes;
         std::vector<TF> rsoil;
         std::vector<TF> rcut;
@@ -101,9 +79,32 @@ class Deposition
         std::vector<TF> henry;
         std::vector<TF> f0;
 
-        TF vd_nh3;
+        // NH3 specific parameters
+        TF vd_nh3;            // NH3 deposition velocity
+        
+        // DEPAC configuration 
+        // Environmental parameters
+        TF glrad;             // Global radiation (W/m2)
+        TF sinphi;            // Sine of solar elevation
+        TF temperature;       // Air temperature (K)
+        TF rh;               // Relative humidity (%)
+        TF sai;              // Stem area index (m2/m2)
+        TF lat;              // Latitude (degrees)
+        
+        // Time and surface parameters
+        int day_of_year;     // Day of year
+        int nwet;            // Surface wetness indicator
+        int lu;              // Land use type
+        
+        // Chemical parameters
+        int iratns;          // NH3 compensation point option
+        TF hlaw;             // Henry's law constant for NH3
+        TF react;            // Reactivity factor
+        TF c_ave_prev_nh3;   // Previous NH3 concentration (μg/m3)
+        TF catm;             // Atmospheric NH3 concentration (μg/m3)
 
-        std::vector<std::string> deposition_tile_names {"veg", "soil" ,"wet"};
+        // Tile management
+        std::vector<std::string> deposition_tile_names {"veg", "soil", "wet"};
         Deposition_tile_map<TF> deposition_tiles;
 
         const std::string tend_name = "deposition";
