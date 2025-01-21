@@ -459,7 +459,7 @@ Deposition<TF>::Deposition(Master& masterin, Grid<TF>& gridin, Fields<TF>& field
     sinphi = inputin.get_item<TF>("deposition", "sinphi", "", (TF)0.6);               // Sine of solar elevation
 
     // Meteorological parameters
-    temperature = inputin.get_item<TF>("deposition", "temperature", "", (TF)298.0);    // Air temperature (K)
+    //temperature = inputin.get_item<TF>("deposition", "temperature", "", (TF)298.0);    // Air temperature (K)
     rh = inputin.get_item<TF>("deposition", "rh", "", (TF)70.0);                      // Relative humidity (%)
 
     // Surface parameters
@@ -601,6 +601,7 @@ template <typename TF>
 void Deposition<TF>::update_time_dependent(
         Timeloop<TF>& timeloop,
         Boundary<TF>& boundary,
+	Thermo<TF>& thermo,    // Added this parameter
         // TF* restrict vdo3,
         // TF* restrict vdno,
         // TF* restrict vdno2,
@@ -615,6 +616,11 @@ void Deposition<TF>::update_time_dependent(
         return;
 
     auto& gd = grid.get_grid_data();
+
+    // added this: get temperature field from thermo
+    auto tmp = fields.get_tmp();
+    thermo.get_thermo_field(*tmp, "T", true, false);
+    temperature = tmp->fld.data()[0] - 273.15;  // Update class member
 
     // get information from lsm:
     auto& tiles = boundary.get_tiles();
@@ -665,6 +671,9 @@ void Deposition<TF>::update_time_dependent(
                 gd.icells);
 	}
 
+    //  release the temporary field at the end
+    fields.release_tmp(tmp);
+
     // Calculate tile-mean deposition for chemistry
     // get_tiled_mean(vdo3,"o3",(TF) 1.0,tiles.at("veg").fraction.data(), tiles.at("soil").fraction.data(), tiles.at("wet").fraction.data());
     // get_tiled_mean(vdno,"no",(TF) 1.0,tiles.at("veg").fraction.data(), tiles.at("soil").fraction.data(), tiles.at("wet").fraction.data());
@@ -673,7 +682,10 @@ void Deposition<TF>::update_time_dependent(
     // get_tiled_mean(vdh2o2,"h2o2",(TF) 1.0,tiles.at("veg").fraction.data(), tiles.at("soil").fraction.data(), tiles.at("wet").fraction.data());
     // get_tiled_mean(vdrooh,"rooh",(TF) 1.0,tiles.at("veg").fraction.data(), tiles.at("soil").fraction.data(), tiles.at("wet").fraction.data());
     // get_tiled_mean(vdhcho,"hcho",(TF) 1.0,tiles.at("veg").fraction.data(), tiles.at("soil").fraction.data(), tiles.at("wet").fraction.data());
-    get_tiled_mean(vdnh3,"nh3",(TF) 1.0,tiles.at("veg").fraction.data(), tiles.at("soil").fraction.data(), tiles.at("wet").fraction.data());  // Added NH3
+    get_tiled_mean(vdnh3,"nh3",(TF) 1.0,
+	tiles.at("veg").fraction.data(),
+	tiles.at("soil").fraction.data(),
+	tiles.at("wet").fraction.data());  // Added NH3
 
     // cmk: we use the wet-tile info for u* and ra, since these are calculated in lsm with f_wet = 100%
     // update_vd_water(vdo3,"o3",tiles.at("wet").ra.data(),tiles.at("wet").ustar.data(),water_mask.data(),diff_scl.data(),rwat.data());

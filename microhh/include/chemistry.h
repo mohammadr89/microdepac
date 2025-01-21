@@ -52,7 +52,8 @@ class Chemistry
 
         void init(Input&);                 ///< Initialize the arrays that contain the profiles.
         void create(const Timeloop<TF>&, std::string, Netcdf_handle&, Stats<TF>&, Cross<TF>&);   ///< Read the profiles of the forces from the input.
-        void update_time_dependent(Timeloop<TF>&,Boundary<TF>&); ///< Update the time dependent parameters.
+        //void update_time_dependent(Timeloop<TF>&,Boundary<TF>&); ///< Update the time dependent parameters.
+	void update_time_dependent(Timeloop<TF>&, Boundary<TF>&, Thermo<TF>&); ///<(added Thermo) Update the time dependent parameters.
         void exec(Thermo<TF>&,double,double);     ///< Add the tendencies belonging to the chemistry processes.
         void exec_stats(const int, const double, Stats<TF>&);   /// calculate statistics
         void exec_cross(Cross<TF>&, unsigned long);
