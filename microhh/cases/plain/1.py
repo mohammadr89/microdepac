@@ -14,14 +14,17 @@ flux2200 = []
 deposition_flux = []
 vd_nh3 = []
 
-for i in range(360):
+# Calculate the index corresponding to z=1200m
+z_max_index = 12  # since 12 * 100m = 1200m
+
+for i in range(180):
     # Get density and calculate mass fluxes as before
-    rho = nc_def.groups['thermo'].variables['rho'][i,:]
+    rho = nc_def.groups['thermo'].variables['rho'][i, :z_max_index]
     
     # Calculate horizontal fluxes
-    u_1100 = nc_u.variables['u'][i, :, :, 1]  
-    nh3_1050 = nc_nh3.variables['nh3'][i, :, :, 0]  
-    nh3_1150 = nc_nh3.variables['nh3'][i, :, :, 1]  
+    u_1100 = nc_u.variables['u'][i, :z_max_index, :, 1]  
+    nh3_1050 = nc_nh3.variables['nh3'][i, :z_max_index, :, 0]  
+    nh3_1150 = nc_nh3.variables['nh3'][i, :z_max_index, :, 1]  
     nh3_1100 = 0.5 * (nh3_1050 + nh3_1150)  
     flux_1100 = np.sum(rho[:, np.newaxis] * u_1100 * nh3_1100) * dy * dz * 17.031 / 28.
     

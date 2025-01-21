@@ -1,3 +1,4 @@
+#
 import netCDF4 as nc    
 import numpy as np      
 
@@ -14,42 +15,70 @@ flux2200 = []
 # Calculate the index corresponding to z=1200m
 z_max_index = 12  # since 12 * 100m = 1200m
 
+# Calculate fluxes at x=1100m for all time steps
 for i in range(180):
-    # Get density
-    rho = nc_def.groups['thermo'].variables['rho'][i,:z_max_index]  # Only up to 1200m
-    
-    # Calculate for x=1100m forest entry
-    u_1100 = nc_u.variables['u'][i, :z_max_index, :, 1]  # x=1100m, limited to 1200m in z
-    nh3_1050 = nc_nh3.variables['nh3'][i, :z_max_index, :, 0]  # NH3 at x=1050
-    nh3_1150 = nc_nh3.variables['nh3'][i, :z_max_index, :, 1]  # NH3 at x=1150
-    nh3_1100 = 0.5 * (nh3_1050 + nh3_1150)  # simple average
+    rho = nc_def.groups['thermo'].variables['rho'][i,:z_max_index]
+    u_1100 = nc_u.variables['u'][i, :z_max_index, :, 1]
+    nh3_1050 = nc_nh3.variables['nh3'][i, :z_max_index, :, 0]
+    nh3_1150 = nc_nh3.variables['nh3'][i, :z_max_index, :, 1]
+    nh3_1100 = 0.5 * (nh3_1050 + nh3_1150)
     
     flux_1100 = np.sum(rho[:, np.newaxis] * u_1100 * nh3_1100) * dy * dz * 17.031 / 28.
-    
-    # Calculate for x=2200m forest exit
-    u_2200 = nc_u.variables['u'][i, :z_max_index, :, 4]  # x=2200m, limited to 1200m in z
-    nh3_2150 = nc_nh3.variables['nh3'][i, :z_max_index, :, 3]  # NH3 at x=2150
-    nh3_2250 = nc_nh3.variables['nh3'][i, :z_max_index, :, 4]  # NH3 at x=2250
-    nh3_2200 = 0.5 * (nh3_2150 + nh3_2250)  
+    flux1100.append(flux_1100)
+
+# Calculate average flux at x=1100m
+avg_flux_1100 = np.mean(flux1100)
+
+# Calculate fluxes at x=2200m for all time steps
+for i in range(180):
+    rho = nc_def.groups['thermo'].variables['rho'][i,:z_max_index]
+    u_2200 = nc_u.variables['u'][i, :z_max_index, :, 4]
+    nh3_2150 = nc_nh3.variables['nh3'][i, :z_max_index, :, 3]
+    nh3_2250 = nc_nh3.variables['nh3'][i, :z_max_index, :, 4]
+    nh3_2200 = 0.5 * (nh3_2150 + nh3_2250)
     
     flux_2200 = np.sum(rho[:, np.newaxis] * u_2200 * nh3_2200) * dy * dz * 17.031 / 28.
-    
-    flux1100.append(flux_1100)
     flux2200.append(flux_2200)
 
-# Calculate statistics
-avg_diff = np.mean(np.array(flux2200) - np.array(flux1100))
-percent_diff = np.mean((np.array(flux2200) - np.array(flux1100)) / np.array(flux1100) * 100)
+# Calculate average flux at x=2200m
+avg_flux_2200 = np.mean(flux2200)
 
-print(f"\nNH3 mass flux at x = 1100m: {flux_1100:.6e} kg[NH3]/s")
-print(f"NH3 mass flux at x = 2200m: {flux_2200:.6e} kg[NH3]/s")
-print(f"\nAverage difference in fluxes (2200m - 1100m): {avg_diff:.6e} g[NH3]/s")
-print(f"Average percentage difference: {percent_diff:.2f}%")
+# Calculate the difference between average fluxes
+flux_difference = avg_flux_2200 - avg_flux_1100
+percent_diff = (flux_difference / avg_flux_1100) * 100
+
+print(f"\nAverage NH3 mass flux at x = 1100m: {avg_flux_1100:.6e} kg[NH3]/s")
+print(f"Average NH3 mass flux at x = 2200m: {avg_flux_2200:.6e} kg[NH3]/s")
+print(f"\nDifference in average fluxes (2200m - 1100m): {flux_difference:.6e} kg[NH3]/s")
+print(f"Percentage difference: {percent_diff:.2f}%")
 
 # Close files
 nc_def.close()
 nc_u.close()
 nc_nh3.close()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 ### Get density

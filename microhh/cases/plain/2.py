@@ -16,7 +16,7 @@ flux2200 = []
 # Calculate the index corresponding to z=1200m (0-1200m = first 13 points since we start at 0)
 z_max_index = 32  # 0,100,200,...,1200 = 13 points
 
-for i in range(360):
+for i in range(180):
     # Get density (slice to match dimensions)
     rho = nc_def.groups['thermo'].variables['rho'][i,:z_max_index]  # Only up to 1200m
     
