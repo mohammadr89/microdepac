@@ -123,7 +123,7 @@ def profile(zi, v_bulk, dv, gamma_v, clip_at_zero=False):
 # Vertical profiles.
 thl = profile(zi=1000, v_bulk=290, dv=2, gamma_v=0.006)
 # qt  = profile(zi=1000, v_bulk=10e-3, dv=-2e-3, gamma_v=-0.003e-3, clip_at_zero=True)
-qt = profile(zi=1000, v_bulk=6e-3, dv=-2e-3, gamma_v=-0.002e-3, clip_at_zero=True)
+qt = profile(zi=1000, v_bulk=5e-3, dv=-3e-3, gamma_v=-0.003e-3, clip_at_zero=True)
 u = np.ones(ktot) * 5
 
 # Surface fluxes.
@@ -135,7 +135,7 @@ time = np.linspace(t0, t1, 32)
 # wthl = 0.15 * np.sin(np.pi * (time-t0) / td)
 # wqt  = 8e-5 * np.sin(np.pi * (time-t0) / td)
 wthl = 0.20 * np.sin(np.pi * (time - t0) / td)
-wqt = 6e-5 * np.sin(np.pi * (time - t0) / td)
+wqt = 5e-5 * np.sin(np.pi * (time - t0) / td)
 
 
 ##########################################################
@@ -303,7 +303,7 @@ z0 = 0
 # strength_co  = 0.0  / 9. / MCO    # kmol(CO) s-1
 # strength_nh3  = 1.0  / 9. / MNH3    # kmol(NH3) s-1
 # strength_nh3  = 1.48950934102587E-06  # kmol(NH3) s-1 (equivalent to one barn of 80 cows)
-strength_nh3  = 0.001
+strength_nh3  = 0.0
 
 # Emission of heat and moisture. Numbers are from:
 # Effective pollutant emission heights for atmospheric transport modelling based on real-world information
@@ -420,7 +420,7 @@ if (sw_land_surface):
         ls[variable][~mask_forest_bool] = grass      # Grass values (both in and out)
     
     # Set surface properties for forest and grass regions
-    set_value("c_veg", forest=1.0, grass=1.0)      # Vegetation fraction
+    set_value("c_veg", forest=0.9, grass=0.7)      # Vegetation fraction
     set_value("lai", forest=6.0, grass=3.0)        # Leaf Area Index
     set_value("water_mask", forest=0, grass=0)     # No water surfaces
 
@@ -448,19 +448,19 @@ if (sw_land_surface):
     
 
     # Surface parameters
-    ls["gD"][:,:] = 0.6               # Vegetation water stress parameter
-    ls["rs_veg_min"][:,:] =300        # Minimum vegetation surface resistance
-    ls["rs_soil_min"][:,:] = 200      # Minimum soil surface resistance
-    ls["lambda_stable"][:,:] = 10     # Skin conductivity for stable conditions (W/m²/K) 
-    ls["lambda_unstable"][:,:] = 10   # Skin conductivity for unstable conditions (W/m²/K) 
+    ls["gD"][:,:] = 0.03              # Vegetation water stress parameter
+    ls["rs_veg_min"][:,:] =250        # Minimum canopy surface resistance
+    ls["rs_soil_min"][:,:] = 50      # Minimum soil surface resistance
+    ls["lambda_stable"][:,:] = 20     # Skin conductivity for stable conditions (W/m²/K) 
+    ls["lambda_unstable"][:,:] = 20   # Skin conductivity for unstable conditions (W/m²/K) 
     ls["cs_veg"][:,:] = 0.5           # Vegetation heat capacity
     ls["t_bot_water"][:,:] = 298     # Bottom water temperature (K)
     
     # Soil properties (4 layers)
     ls["t_soil"][:,:,:] = 295        # Soil temperature
-    ls["theta_soil"][:,:,:] = 0.1    # Volumetric soil moisture content (m³/m³)
+    ls["theta_soil"][:,:,:] = 0.2    # Volumetric soil moisture content (m³/m³)
     ls["index_soil"][:,:,:] = 0      # Soil type index
-    ls["root_frac"][:,:,:] = 0.15    # Root fraction distribution in each soil layer
+    ls["root_frac"][:,:,:] = 0.25    # Root fraction distribution in each soil layer
 
     # Check if all values are set
     ls.check()
