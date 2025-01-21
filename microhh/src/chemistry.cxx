@@ -1,15 +1,3 @@
-/* changes we made for thermo:
- * model.cxx calls chemistry with thermo
- * chemistry passes thermo to deposition
- * deposition uses thermo to get temperature
- * 
- * So the complete changes needed are:
- * 
- * chemistry.h - update function declaration ✓
- * chemistry.cxx - update function definition ✓
- * model.cxx - update function call
-*/
-
 /*
  * MicroHH
  * Copyright (c) 2011-2020 Chiel van Heerwaarden
@@ -466,9 +454,7 @@ void Chemistry<TF>::exec_cross(Cross<TF>& cross, unsigned long iotime)
 }
 
 template <typename TF>
-//void Chemistry<TF>::update_time_dependent(Timeloop<TF>& timeloop, Boundary<TF>& boundary)
-void Chemistry<TF>::update_time_dependent(Timeloop<TF>& timeloop, Boundary<TF>& boundary, Thermo<TF>& thermo)
-
+void Chemistry<TF>::update_time_dependent(Timeloop<TF>& timeloop, Boundary<TF>& boundary)
 {
     if (!sw_chemistry)
         return;
@@ -489,7 +475,6 @@ void Chemistry<TF>::update_time_dependent(Timeloop<TF>& timeloop, Boundary<TF>& 
     deposition->update_time_dependent(
             timeloop,
             boundary,
-	    thermo,
             vdnh3.data());
 }
 
