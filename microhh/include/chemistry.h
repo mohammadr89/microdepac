@@ -95,6 +95,7 @@ class Chemistry
         std::vector<TF> qprof;
         std::vector<TF> tprof;
 	std::vector<TF> flux_nh3;  //added for nh3_flux 
+	std::vector<TF> flux_inst; //added for instantaneous flux
         TF trfa;
 
         // vectors to contain calculated deposition velocities (m/s)
@@ -104,3 +105,5 @@ class Chemistry
         const std::string tend_longname = "Chemistry";
 };
 #endif
+
+
