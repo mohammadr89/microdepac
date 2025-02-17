@@ -455,28 +455,28 @@ Deposition<TF>::Deposition(Master& masterin, Grid<TF>& gridin, Fields<TF>& field
     // Added: Initialize DEPAC parameters for NH3 deposition
 
     // Radiation parameters
-    glrad = inputin.get_item<TF>("deposition", "glrad", "", (TF)700.0);                // Global radiation (W/m2)
-    sinphi = inputin.get_item<TF>("deposition", "sinphi", "", (TF)0.6);               // Sine of solar elevation
+    glrad = inputin.get_item<TF>("deposition", "glrad", "", (TF)600.0);                // Global radiation (W/m2)
+    sinphi = inputin.get_item<TF>("deposition", "sinphi", "", (TF)0.75);               // Sine of solar elevation:  Solar elevation angle at noon ≈ 48.5° ==>  sinphi = sin(48.5°) ≈ 0.75
 
     // Meteorological parameters
-    temperature = inputin.get_item<TF>("deposition", "temperature", "", (TF)298.0);    // Air temperature (K)
-    rh = inputin.get_item<TF>("deposition", "rh", "", (TF)70.0);                      // Relative humidity (%)
+    temperature = inputin.get_item<TF>("deposition", "temperature", "", (TF)293.15);  // Air temperature (K)
+    rh = inputin.get_item<TF>("deposition", "rh", "", (TF)50.0);                      // Relative humidity (%)
 
     // Surface parameters
     sai = inputin.get_item<TF>("deposition", "sai", "", (TF)6.0);                     // Stem area index (m2/m2)
     lat = inputin.get_item<TF>("deposition", "lat", "", (TF)51.0);                    // Latitude (degrees)
 
     // Time and surface condition parameters
-    day_of_year = inputin.get_item<int>("deposition", "day_of_year", "", 226);        // Day of year
+    day_of_year = inputin.get_item<int>("deposition", "day_of_year", "", 217);        // Day of year: 18 August
     nwet = inputin.get_item<int>("deposition", "nwet", "", 0);                        // Surface wetness indicator
     lu = inputin.get_item<int>("deposition", "lu", "", 4);                            // Land use type
     
     // NH3-specific parameters
     iratns = inputin.get_item<int>("deposition", "iratns", "", 2);                    // NH3 compensation point option
-    hlaw = inputin.get_item<TF>("deposition", "hlaw", "", (TF)57.0);                  // Henry's law constant
-    react = inputin.get_item<TF>("deposition", "react", "", (TF)0.1);                 // Reactivity factor
+    hlaw = inputin.get_item<TF>("deposition", "hlaw", "", (TF)6.1e4);                 //rmes = 1/(henry/3000.+100.*react)  ! Wesely '89, eq. 6
+    react = inputin.get_item<TF>("deposition", "react", "", (TF)0.0);                 // Reactivity factor
     c_ave_prev_nh3 = inputin.get_item<TF>("deposition", "c_ave_prev_nh3", "", (TF)5.0); // Previous NH3 concentration (μg/m3)
-    catm = inputin.get_item<TF>("deposition", "catm", "", (TF)5.0);                  // Atmospheric NH3 concentration (μg/m3)
+    catm = inputin.get_item<TF>("deposition", "catm", "", (TF)0.76);                  // Atmospheric NH3 concentration (μg/m3) (0.76 μg/m3 ~ 1 ppb)
 }
 
 
@@ -959,3 +959,4 @@ void Deposition<TF>::spatial_avg_vd(
 
 template class Deposition<double>;
 //:template class Chemistry<float>;
+

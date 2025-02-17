@@ -88,6 +88,7 @@ namespace
             const TF* const restrict rhoref,
             TF* restrict rfa,
 	    TF* restrict flux_nh3,  // New parameter for flux
+	    TF* restrict flux_inst, // Add this line for instantaneous flux
             TF& trfa,
             const TF dt,
             const TF sdt,
@@ -109,7 +110,8 @@ namespace
 
 
         // Update the time integration of the reaction fluxes with the full timestep on first RK3 step
-        if (abs(sdt/dt - 1./3.) < 1e-5) trfa += dt;
+        //if (abs(sdt/dt - 1./3.) < 1e-5) trfa += dt;
+        trfa += sdt;
 
         for (int k=kstart; k<kend; ++k)
         {
@@ -135,10 +137,20 @@ namespace
                         {
                     	   // Calculate and accumulate flux for this RK3 step
                     	   // Note: flux is accumulated (+=) and scaled by sdt
-			   //TF flux = (-1.0) * vdnh3[ij] * nh3[ijk] * rhoref[k] * xmair_i * xmnh3 * sdt; // [kg(NH3) m-2 s-1]
-			   TF flux = (-1.0) * 1.0e3 * vdnh3[ij] * nh3[ijk] * rhoref[k] * xmair_i * sdt; // [mol(NH3) m-2 s-1 * sdt!!!]
-			   flux_nh3[ij] += flux;        // For period statistics
 
+			   //TF flux = (-1.0) * vdnh3[ij] * nh3[ijk] * rhoref[k] * xmair_i * xmnh3 * sdt; // [kg(NH3) m-2 s-1]
+			   //TF flux[ij] = (-1.0) * 1.0e3 * vdnh3[ij] * nh3[ijk] * rhoref[k] * xmair_i * sdt; // [mol(NH3) m-2 s-1 * sdt!!!]
+			   //flux_nh3[ij] = (-1.0) * 1.0e3 * vdnh3[ij] * nh3[ijk] * rhoref[k] * xmair_i * sdt; // [mol(NH3) m-2 s-1 * sdt!!!]
+
+
+			   // Calculate instantaneous flux first
+			   flux_inst[ij] = (-1.0) * vdnh3[ij] * nh3[ijk] * rhoref[k] * xmair_i * xmnh3; // [kg(NH3) m-2 s-1]
+			   
+			   // Then calculate accumulated flux using the instantaneous value
+			   TF flux = flux_inst[ij] * sdt; // Scale by timestep for accumulation
+
+			   //TF flux = (-1.0) * vdnh3[ij] * nh3[ijk] * rhoref[k] * xmair_i * xmnh3 * sdt; // [kg(NH3) m-2 s-1] 
+			   flux_nh3[ij] += flux;        // For period statistics
 		  	   decay = vdnh3[ij]*dzi[k] + lti;   // 1/s
    			}
 		    else
@@ -201,17 +213,28 @@ void Chemistry<TF>::exec_stats(const int iteration, const double time, Stats<TF>
     {
         // add deposition velocities to statistics:
         stats.calc_stats_2d("vdnh3"   , vdnh3,   no_offset);
+	
+	
+        for (int j=gd.jstart; j<gd.jend; ++j)
+            for (int i=gd.istart; i<gd.iend; ++i)
+                {
+                    const int ij = i + j*gd.jstride;
+		    flux_nh3[ij] /= trfa;
+		} 
 
 	stats.calc_stats_2d("flux_nh3", flux_nh3, no_offset); //added for nh3_flux
+	stats.calc_stats_2d("flux_inst", flux_inst, no_offset); // added for instantaneous deposition flux of NH3
+
 
 	// Reset the periodic flux after saving to stats
+    	trfa = 0;
     	std::fill(flux_nh3.begin(), flux_nh3.end(), TF(0));
  
         // sum of all PEs:
         // printf("trfa: %13.4e iteration: %i time: %13.4e \n", trfa,iteration,time);
 	master.sum(rfa.data(),NREACT*gd.ktot);
-        for (int l=0; l<NREACT*gd.ktot; ++l)
-            rfa[l] /= (trfa*gd.itot*gd.jtot);    // mean over the horizontal plane in molecules/(cm3 * s)
+        // for (int l=0; l<NREACT*gd.ktot; ++l)
+        //     rfa[l] /= (trfa*gd.itot*gd.jtot);    // mean over the horizontal plane in molecules/(cm3 * s)
 
         // Put the data into the NetCDF file.
         const std::vector<int> time_index{statistics_counter};
@@ -240,9 +263,9 @@ void Chemistry<TF>::exec_stats(const int iteration, const double time, Stats<TF>
     }
 
     // (re-)intialize statistics
-    for (int l=0; l<NREACT*gd.ktot; ++l)
-        rfa[l] = 0.0;
-    trfa = (TF) 0.0;
+    // for (int l=0; l<NREACT*gd.ktot; ++l)
+    //     rfa[l] = 0.0;
+    // trfa = (TF) 0.0;
 }
 
 template <typename TF>
@@ -261,6 +284,11 @@ void Chemistry<TF>::init(Input& inputin)
     // added for nh3_flux (initialize nh3_flux arrays)
     flux_nh3.resize(gd.ijcells);
     std::fill(flux_nh3.begin(), flux_nh3.end(), TF(0));
+
+
+    // added for instantaneous deposition flux of NH3 
+    flux_inst.resize(gd.ijcells);
+    std::fill(flux_inst.begin(), flux_inst.end(), TF(0));
 
     // initialize deposition routine:
     deposition-> init(inputin);
@@ -329,10 +357,10 @@ void Chemistry<TF>::create(
 
     // Store output of averaging.
     const TF NREACT = TF(1);
-    rfa.resize(NREACT*gd.ktot);
-    for (int l=0;l<NREACT*gd.ktot;++l)
-        rfa[l] = 0.0;
-    trfa = (TF)0.0;
+    //rfa.resize(NREACT*gd.ktot);
+    // for (int l=0;l<NREACT*gd.ktot;++l)
+    //     rfa[l] = 0.0;
+    // trfa = (TF)0.0;
     qprof.resize(gd.kcells);
     tprof.resize(gd.kcells);
 
@@ -416,14 +444,14 @@ void Chemistry<TF>::create(
 
         // used in chemistry:
         stats.add_time_series("vdnh3", "NH3 deposition velocity", "m s-1", group_named);
-	stats.add_time_series("flux_nh3", "NH3 surface flux", "mol(NH3) m-2 s-1", group_named);
+	//stats.add_time_series("flux_nh3", "NH3 surface flux", "mol(NH3) m-2 s-1", group_named);
     }
 
     // add cross-sections
     if (cross.get_switch())
     {
         //std::vector<std::string> allowed_crossvars = {"vdnh3"};
-        std::vector<std::string> allowed_crossvars = {"vdnh3","flux_nh3"};
+        std::vector<std::string> allowed_crossvars = {"vdnh3","flux_nh3","flux_inst"};
         cross_list = cross.get_enabled_variables(allowed_crossvars);
 
         // `deposition->create()` only creates cross-sections.
@@ -447,6 +475,8 @@ void Chemistry<TF>::exec_cross(Cross<TF>& cross, unsigned long iotime)
             cross.cross_plane(vdnh3.data(), no_offset, name, iotime);
 	else if (name == "flux_nh3") //added for nh3_flux
             cross.cross_plane(flux_nh3.data(), no_offset, name, iotime);
+	else if (name == "flux_inst")  //added for instantaneous deposition flux of NH3
+	    cross.cross_plane(flux_inst.data(), no_offset, name, iotime);
     }
 
     // see if to write per tile:
@@ -507,7 +537,8 @@ void Chemistry<TF>::exec(Thermo<TF>& thermo,double sdt,double dt)
         fields.rhoref.data(),
         rfa.data(),
 	flux_nh3.data(),  //added for nh3_flux
-        trfa,
+	flux_inst.data(), //added for instantaneous deposition flux of NH3
+        trfa, //accumulated for the time
         dt, sdt, lifetime,
         gd.istart, gd.iend,
         gd.jstart, gd.jend,
