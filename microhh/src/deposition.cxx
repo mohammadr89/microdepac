@@ -47,7 +47,7 @@
  *   - Accurate vegetation parameters based on LAI.
  *   - Differentiates grass vs forest with proper resistance scaling.
  *   - Handles both dry and wet conditions effectively.
-*/
+ */
 
 
 //#include <cstdio>
@@ -75,375 +75,381 @@
 // Added: C linkage for DEPAC Fortran wrapper
 extern "C" {
     void depac_wrapper(
-        const char* compnam,
-        int day_of_year,
-        float lat,
-        float t,
-        float ust,
-        float glrad, 
-        float sinphi,
-        float rh,
-        float lai,
-        float sai,
-        int nwet,
-        int lu,
-        int iratns,
-        float *rc_tot,
-        float *ccomp_tot,
-        float hlaw,
-        float react,
-        int *status,
-        float c_ave_prev_nh3,
-        float ra,
-        float rb,
-        float catm,
-        float *rc_eff,
-        float *gsoil_eff_out,
-        float *rsoil_eff_out
-    );
+            const char* compnam,
+            int day_of_year,
+            float lat,
+            float t,
+            float ust,
+            float glrad, 
+            float sinphi,
+            float rh,
+            float lai,
+            float sai,
+            int nwet,
+            int lu,
+            int iratns,
+            float *rc_tot,
+            float *ccomp_tot,
+            float hlaw,
+            float react,
+            int *status,
+            float c_ave_prev_nh3,
+            float ra,
+            float rb,
+            float catm,
+            float *rc_eff,
+            float *gsoil_eff_out,
+            float *rsoil_eff_out,
+            float p  // Added pressure parameter
+                );
 }
 
 namespace {
 
-	template<typename TF>
-	void calc_tiled_mean(
-	        TF* const restrict fld,
-	        const TF* const restrict f_veg,
-	        const TF* const restrict f_soil,
-	        const TF* const restrict f_wet,
-	        const TF* const restrict fld_veg,
-	        const TF* const restrict fld_soil,
-	        const TF* const restrict fld_wet,
-	        const TF fac,
-	        const int istart, const int iend,
-	        const int jstart, const int jend,
-	        const int icells)
-	{
-	    for (int j=jstart; j<jend; ++j)
-	        #pragma ivdep
-	        for (int i=istart; i<iend; ++i)
-	        {
-	            const int ij  = i + j*icells;
-	
-	            fld[ij] = (
-	                f_veg [ij] * fld_veg [ij] +
-	                f_soil[ij] * fld_soil[ij] +
-	                f_wet [ij] * fld_wet [ij] ) * fac;
-	        }
-	}
-	
-	template<typename TF>
-	void calc_vd_water(
-	        TF* const restrict fld,
-	        const TF* const restrict ra,
-	        const TF* const restrict ustar,
-	        const int* const restrict water_mask,
-	        const TF diff_scl,
-	        const TF rwat,
-	        const int istart, const int iend,
-	        const int jstart, const int jend,
-	        const int icells)
-	{
-	    const TF ckarman = 0.4;
-	
-	    for (int j=jstart; j<jend; ++j)
-	        #pragma ivdep
-	        for (int i=istart; i<iend; ++i)
-	        {
-	            const int ij = i + j*icells;
-	
-	            if (water_mask[ij] == 1)
-	            {
-	                const TF rb = (TF)1.0 / (ckarman * ustar[ij]) * diff_scl;
-	                fld[ij] = (TF)1.0 / (ra[ij] + rb + rwat);
-	            }
-	        }
-	}
-	
-	template<typename TF>
-	void calc_spatial_avg_deposition(
-	        TF* const restrict fld,
-	        const int istart, const int iend,
-	        const int jstart, const int jend,
-	        const int icells)
-	{
-	    //// Calculate sum and count
-	    //TF n_dep = (TF)0.0;
-	    //TF sum_dep = (TF)0.0;
-	
-	    //for (int j=jstart; j<jend; ++j)
-	    //    #pragma ivdep
-	    //    for (int i=istart; i<iend; ++i)
-	    //    {
-	    //        const int ij = i + j*icells;
-	    //        sum_dep += fld[ij];
-	    //        n_dep += 1.0;
-	    //    }
-	
-	    //// Calculate and apply average
-	    //TF avg_dep = sum_dep / n_dep;
-	
-	    //for (int j=jstart; j<jend; ++j)
-	    //    #pragma ivdep
-	    //    for (int i=istart; i<iend; ++i)
-	    //    {
-	    //        const int ij = i + j*icells;
-	    //        fld[ij] = avg_dep;
-	    //    }
-	}
+    template<typename TF>
+        void calc_tiled_mean(
+                TF* const restrict fld,
+                const TF* const restrict f_veg,
+                const TF* const restrict f_soil,
+                const TF* const restrict f_wet,
+                const TF* const restrict fld_veg,
+                const TF* const restrict fld_soil,
+                const TF* const restrict fld_wet,
+                const TF fac,
+                const int istart, const int iend,
+                const int jstart, const int jend,
+                const int icells)
+        {
+            for (int j=jstart; j<jend; ++j)
+#pragma ivdep
+                for (int i=istart; i<iend; ++i)
+                {
+                    const int ij  = i + j*icells;
+
+                    fld[ij] = (
+                            f_veg [ij] * fld_veg [ij] +
+                            f_soil[ij] * fld_soil[ij] +
+                            f_wet [ij] * fld_wet [ij] ) * fac;
+                }
+        }
+
+    template<typename TF>
+        void calc_vd_water(
+                TF* const restrict fld,
+                const TF* const restrict ra,
+                const TF* const restrict ustar,
+                const int* const restrict water_mask,
+                const TF diff_scl,
+                const TF rwat,
+                const int istart, const int iend,
+                const int jstart, const int jend,
+                const int icells)
+        {
+            const TF ckarman = 0.4;
+
+            for (int j=jstart; j<jend; ++j)
+#pragma ivdep
+                for (int i=istart; i<iend; ++i)
+                {
+                    const int ij = i + j*icells;
+
+                    if (water_mask[ij] == 1)
+                    {
+                        const TF rb = (TF)1.0 / (ckarman * ustar[ij]) * diff_scl;
+                        fld[ij] = (TF)1.0 / (ra[ij] + rb + rwat);
+                    }
+                }
+        }
+
+    template<typename TF>
+        void calc_spatial_avg_deposition(
+                TF* const restrict fld,
+                const int istart, const int iend,
+                const int jstart, const int jend,
+                const int icells)
+        {
+            //// Calculate sum and count
+            //TF n_dep = (TF)0.0;
+            //TF sum_dep = (TF)0.0;
+
+            //for (int j=jstart; j<jend; ++j)
+            //    #pragma ivdep
+            //    for (int i=istart; i<iend; ++i)
+            //    {
+            //        const int ij = i + j*icells;
+            //        sum_dep += fld[ij];
+            //        n_dep += 1.0;
+            //    }
+
+            //// Calculate and apply average
+            //TF avg_dep = sum_dep / n_dep;
+
+            //for (int j=jstart; j<jend; ++j)
+            //    #pragma ivdep
+            //    for (int i=istart; i<iend; ++i)
+            //    {
+            //        const int ij = i + j*icells;
+            //        fld[ij] = avg_dep;
+            //    }
+        }
 
 
     template<typename TF>
-    void calc_deposition_per_tile(
-        const std::string lu_type,
-        TF* restrict vdnh3,              // Output: NH3 deposition velocity
-        const TF* const restrict lai,     // Leaf Area Index
-        const TF* const restrict c_veg,   // Vegetation fraction
-        const TF* const restrict rs,      // Surface resistance
-        const TF* const restrict rs_veg,  // Vegetation surface resistance  
-        const TF* const restrict ra,      // Aerodynamic resistance (from MicroHH)
-        const TF* const restrict ustar,   // Friction velocity
-        const TF* const restrict fraction, // Tile fraction
-        const TF* const restrict diff_scl, // Diffusion scaling factors
-        const TF glrad,          // Global radiation
-        const TF sinphi,         // Solar elevation angle
-        const TF temperature,    // Temperature [K]
-        const TF rh,            // Relative humidity [%]
-        const TF sai,           // Stem Area Index
-        const TF lat,           // Latitude [degrees]
-        const int day_of_year,  // Day of year
-        const int nwet,         // Surface wetness 
-        const int lu,           // Land use type
-        const int iratns,       // NH3 compensation point option
-        const TF hlaw,          // Henry's law constant
-        const TF react,         // Reactivity factor 
-        const TF c_ave_prev_nh3, // Previous NH3 concentration
-        const TF catm,          // Atmospheric NH3 concentration
-        const int istart, const int iend,
-        const int jstart, const int jend,
-        const int jj)
-    {
-        const TF ckarman = 0.4;  // von Karman constant
-        const int STATUS_OK = 0;  // Status code for successful DEPAC calls
-        
-        if (lu_type == "veg") {
-            // Vegetation tile handling
-            for (int j=jstart; j<jend; ++j)
-                for (int i=istart; i<iend; ++i) {
-                    const int ij = i + j*jj;
-                    
-                    if (fraction[ij] < (TF)1e-12)
-                        continue;
-            	    // NEW: Automatic determination of land use type and SAI based on LAI
-            	    // This allows DEPAC to use different parameters for grass vs forest
-            	    int local_lu;
-            	    TF local_sai;
-            	    if (lai[ij] <= 3.5) {
-            	        local_lu = 1;  // grass
-            	        local_sai = lai[ij];  // For grass, SAI = LAI
-            	    } else {
-            	        local_lu = 4;  // coniferous forest
-            	        local_sai = lai[ij] + 1.0;  // For forest, add stem area
-            	    }
+        void calc_deposition_per_tile(
+                const std::string lu_type,
+                TF* restrict vdnh3,              // Output: NH3 deposition velocity
+                const TF* const restrict lai,     // Leaf Area Index
+                const TF* const restrict c_veg,   // Vegetation fraction
+                const TF* const restrict rs,      // Surface resistance
+                const TF* const restrict rs_veg,  // Vegetation surface resistance  
+                const TF* const restrict ra,      // Aerodynamic resistance (from MicroHH)
+                const TF* const restrict ustar,   // Friction velocity
+                const TF* const restrict fraction, // Tile fraction
+                const TF* const restrict diff_scl, // Diffusion scaling factors
+                const TF glrad,          // Global radiation
+                const TF sinphi,         // Solar elevation angle
+                const TF temperature,    // Temperature [K]
+                const TF rh,            // Relative humidity [%]
+                const TF sai,           // Stem Area Index
+                const TF lat,           // Latitude [degrees]
+                const int day_of_year,  // Day of year
+                const int nwet,         // Surface wetness 
+                const int lu,           // Land use type
+                const int iratns,       // NH3 compensation point option
+                const TF hlaw,          // Henry's law constant
+                const TF react,         // Reactivity factor 
+                const TF c_ave_prev_nh3, // Previous NH3 concentration
+                const TF catm,          // Atmospheric NH3 concentration
+                const TF pressure,      // Added pressure parameter
+                const int istart, const int iend,
+                const int jstart, const int jend,
+                const int jj)
+                {
+                    const TF ckarman = 0.4;  // von Karman constant
+                    const int STATUS_OK = 0;  // Status code for successful DEPAC calls
 
-                    // Keep IFS Ra and use vegetation Rb scaling
-                    const TF rb = TF(2.0) / (ckarman * ustar[ij]) * diff_scl[0];
-                    
-                    // Call DEPAC wrapper for dry vegetation
-                    char compnam[4] = "NH3";
-                    float rc_tot, ccomp_tot, rc_eff;
-                    float gsoil_eff_out, rsoil_eff_out;
-                    int status;
-                    
-                    depac_wrapper(
-                        compnam,
-                        day_of_year,
-                        lat,
-                        temperature,
-                        ustar[ij],
-                        glrad,
-                        sinphi,
-                        rh,
-                        lai[ij],
-                        //sai,
-	                local_sai,        // CHANGED: Use calculated SAI
-                        0,  // nwet = 0 for dry vegetation
-                        //lu,
-	                local_lu,         // CHANGED: Use LAI-determined land use type
-                        iratns,
-                        &rc_tot,
-                        &ccomp_tot,
-                        hlaw,
-                        react,
-                        &status,
-                        c_ave_prev_nh3,
-                        ra[ij],
-                        rb,
-                        catm,
-                        &rc_eff,
-                        &gsoil_eff_out,
-                        &rsoil_eff_out
-                    );
+                    if (lu_type == "veg") {
+                        // Vegetation tile handling
+                        for (int j=jstart; j<jend; ++j)
+                            for (int i=istart; i<iend; ++i) {
+                                const int ij = i + j*jj;
 
-                    // Calculate deposition velocity using resistance analogy
-                    if (status == STATUS_OK) {
-                        vdnh3[ij] = (TF)1.0 / (ra[ij] + rb + rc_eff);
+                                if (fraction[ij] < (TF)1e-12)
+                                    continue;
+                                // NEW: Automatic determination of land use type and SAI based on LAI
+                                // This allows DEPAC to use different parameters for grass vs forest
+                                int local_lu;
+                                TF local_sai;
+                                if (lai[ij] <= 3.5) {
+                                    local_lu = 1;  // grass
+                                    local_sai = lai[ij];  // For grass, SAI = LAI
+                                } else {
+                                    local_lu = 4;  // coniferous forest
+                                    local_sai = lai[ij] + 1.0;  // For forest, add stem area
+                                }
+
+                                // Keep IFS Ra and use vegetation Rb scaling
+                                const TF rb = TF(2.0) / (ckarman * ustar[ij]) * diff_scl[0];
+
+                                // Call DEPAC wrapper for dry vegetation
+                                char compnam[4] = "NH3";
+                                float rc_tot, ccomp_tot, rc_eff;
+                                float gsoil_eff_out, rsoil_eff_out;
+                                int status;
+
+                                depac_wrapper(
+                                        compnam,
+                                        day_of_year,
+                                        lat,
+                                        temperature,
+                                        ustar[ij],
+                                        glrad,
+                                        sinphi,
+                                        rh,
+                                        lai[ij],
+                                        //sai,
+                                        local_sai,        // CHANGED: Use calculated SAI
+                                        0,  // nwet = 0 for dry vegetation
+                                            //lu,
+                                        local_lu,         // CHANGED: Use LAI-determined land use type
+                                        iratns,
+                                        &rc_tot,
+                                        &ccomp_tot,
+                                        hlaw,
+                                        react,
+                                        &status,
+                                        c_ave_prev_nh3,
+                                        ra[ij],
+                                        rb,
+                                        catm,
+                                        &rc_eff,
+                                        &gsoil_eff_out,
+                                        &rsoil_eff_out,
+                                        pressure
+                                            );
+
+                                        // Calculate deposition velocity using resistance analogy
+                                        if (status == STATUS_OK) {
+                                            vdnh3[ij] = (TF)1.0 / (ra[ij] + rb + rc_eff);
+                                        }
+                            }
+                    }
+                    else if (lu_type == "soil") {
+                        // Bare soil tile handling  
+                        for (int j=jstart; j<jend; ++j)
+                            for (int i=istart; i<iend; ++i) {
+                                const int ij = i + j*jj;
+
+                                if (fraction[ij] < (TF)1e-12)
+                                    continue;
+
+                                // Use soil Rb scaling
+                                const TF rb = (TF)1.0 / (ckarman * ustar[ij]) * diff_scl[0];
+
+                                // Call DEPAC wrapper for dry soil
+                                char compnam[4] = "NH3";
+                                float rc_tot, ccomp_tot, rc_eff;
+                                float gsoil_eff_out, rsoil_eff_out;
+                                int status;
+
+                                depac_wrapper(
+                                        compnam,
+                                        day_of_year,
+                                        lat,
+                                        temperature,
+                                        ustar[ij],
+                                        glrad,
+                                        sinphi,
+                                        rh,
+                                        lai[ij],
+                                        sai,
+                                        0,  // nwet = 0 for dry soil
+                                        lu,
+                                        iratns,
+                                        &rc_tot,
+                                        &ccomp_tot,
+                                        hlaw,
+                                        react,
+                                        &status,
+                                        c_ave_prev_nh3,
+                                        ra[ij],
+                                        rb,
+                                        catm,
+                                        &rc_eff,
+                                        &gsoil_eff_out,
+                                        &rsoil_eff_out,
+                                        pressure
+                                            );
+
+                                        if (status == STATUS_OK) {
+                                            vdnh3[ij] = (TF)1.0 / (ra[ij] + rb + rsoil_eff_out);
+                                        }
+                            }
+                    }
+                    else if (lu_type == "wet") {
+                        // Wet surfaces handling (both vegetation and soil)
+                        for (int j=jstart; j<jend; ++j)
+                            for (int i=istart; i<iend; ++i) {
+                                const int ij = i + j*jj;
+
+                                if (fraction[ij] < (TF)1e-12)
+                                    continue;
+
+                                char compnam[4] = "NH3";
+                                float rc_tot, ccomp_tot, rc_eff;
+                                float gsoil_eff_out, rsoil_eff_out;
+                                int status;
+
+                                if (c_veg[ij] > 0) {
+                                    // NEW: Added same LAI-based determination for wet vegetation
+                                    int local_lu;
+                                    TF local_sai;
+                                    if (lai[ij] <= 3.5) {
+                                        local_lu = 1;  // grass
+                                        local_sai = lai[ij];  // For grass, SAI = LAI
+                                    } else {
+                                        local_lu = 4;  // coniferous forest
+                                        local_sai = lai[ij] + 1.0;  // For forest, add stem area
+                                    }
+
+                                    // Wet vegetation case
+                                    const TF rb = TF(2.0) / (ckarman * ustar[ij]) * diff_scl[0];
+
+                                    depac_wrapper(
+                                            compnam,
+                                            day_of_year,
+                                            lat,
+                                            temperature,
+                                            ustar[ij],
+                                            glrad,
+                                            sinphi,
+                                            rh,
+                                            lai[ij],
+                                            //sai,
+                                            local_sai,        // CHANGED: Use calculated SAI
+                                            1,  // nwet = 1 for wet conditions
+                                                //lu,
+                                            local_lu,         // CHANGED: Use LAI-determined land use type
+                                            iratns,
+                                            &rc_tot,
+                                            &ccomp_tot,
+                                            hlaw,
+                                            react,
+                                            &status,
+                                            c_ave_prev_nh3,
+                                            ra[ij],
+                                            rb,
+                                            catm,
+                                            &rc_eff,
+                                            &gsoil_eff_out,
+                                            &rsoil_eff_out,
+                                            pressure
+                                                );
+
+                                            if (status == STATUS_OK) {
+                                                vdnh3[ij] = (TF)1.0 / (ra[ij] + rb + rc_eff);
+                                            }
+                                }
+                                else {
+                                    // Wet soil case
+                                    const TF rb = (TF)1.0 / (ckarman * ustar[ij]) * diff_scl[0];
+
+                                    depac_wrapper(
+                                            compnam,
+                                            day_of_year,
+                                            lat,
+                                            temperature,
+                                            ustar[ij],
+                                            glrad,
+                                            sinphi,
+                                            rh,
+                                            lai[ij],
+                                            sai,
+                                            1,  // nwet = 1 for wet conditions
+                                            lu,
+                                            iratns,
+                                            &rc_tot,
+                                            &ccomp_tot,
+                                            hlaw,
+                                            react,
+                                            &status,
+                                            c_ave_prev_nh3,
+                                            ra[ij],
+                                            rb,
+                                            catm,
+                                            &rc_eff,
+                                            &gsoil_eff_out,
+                                            &rsoil_eff_out,
+                                            pressure
+                                                );
+
+                                            if (status == STATUS_OK) {
+                                                vdnh3[ij] = (TF)1.0 / (ra[ij] + rb + rsoil_eff_out);
+                                            }
+                                }
+                            }
                     }
                 }
-        }
-        else if (lu_type == "soil") {
-            // Bare soil tile handling  
-            for (int j=jstart; j<jend; ++j)
-                for (int i=istart; i<iend; ++i) {
-                    const int ij = i + j*jj;
-                    
-                    if (fraction[ij] < (TF)1e-12)
-                        continue;
-
-                    // Use soil Rb scaling
-                    const TF rb = (TF)1.0 / (ckarman * ustar[ij]) * diff_scl[0];
-                    
-                    // Call DEPAC wrapper for dry soil
-                    char compnam[4] = "NH3";
-                    float rc_tot, ccomp_tot, rc_eff;
-                    float gsoil_eff_out, rsoil_eff_out;
-                    int status;
-                    
-                    depac_wrapper(
-                        compnam,
-                        day_of_year,
-                        lat,
-                        temperature,
-                        ustar[ij],
-                        glrad,
-                        sinphi,
-                        rh,
-                        lai[ij],
-                        sai,
-                        0,  // nwet = 0 for dry soil
-                        lu,
-                        iratns,
-                        &rc_tot,
-                        &ccomp_tot,
-                        hlaw,
-                        react,
-                        &status,
-                        c_ave_prev_nh3,
-                        ra[ij],
-                        rb,
-                        catm,
-                        &rc_eff,
-                        &gsoil_eff_out,
-                        &rsoil_eff_out
-                    );
-
-                    if (status == STATUS_OK) {
-                        vdnh3[ij] = (TF)1.0 / (ra[ij] + rb + rsoil_eff_out);
-                    }
-                }
-        }
-        else if (lu_type == "wet") {
-            // Wet surfaces handling (both vegetation and soil)
-            for (int j=jstart; j<jend; ++j)
-                for (int i=istart; i<iend; ++i) {
-                    const int ij = i + j*jj;
-                    
-                    if (fraction[ij] < (TF)1e-12)
-                        continue;
-
-                    char compnam[4] = "NH3";
-                    float rc_tot, ccomp_tot, rc_eff;
-                    float gsoil_eff_out, rsoil_eff_out;
-                    int status;
-                    
-                    if (c_veg[ij] > 0) {
-		        // NEW: Added same LAI-based determination for wet vegetation
-                	int local_lu;
-                	TF local_sai;
-                	if (lai[ij] <= 3.5) {
-                	    local_lu = 1;  // grass
-                	    local_sai = lai[ij];  // For grass, SAI = LAI
-                	} else {
-                	    local_lu = 4;  // coniferous forest
-                	    local_sai = lai[ij] + 1.0;  // For forest, add stem area
-                	}
-
-                        // Wet vegetation case
-                        const TF rb = TF(2.0) / (ckarman * ustar[ij]) * diff_scl[0];
-                        
-                        depac_wrapper(
-                            compnam,
-                            day_of_year,
-                            lat,
-                            temperature,
-                            ustar[ij],
-                            glrad,
-                            sinphi,
-                            rh,
-                            lai[ij],
-                            //sai,
-	                    local_sai,        // CHANGED: Use calculated SAI
-                            1,  // nwet = 1 for wet conditions
-                            //lu,
-	                    local_lu,         // CHANGED: Use LAI-determined land use type
-                            iratns,
-                            &rc_tot,
-                            &ccomp_tot,
-                            hlaw,
-                            react,
-                            &status,
-                            c_ave_prev_nh3,
-                            ra[ij],
-                            rb,
-                            catm,
-                            &rc_eff,
-                            &gsoil_eff_out,
-                            &rsoil_eff_out
-                        );
-
-                        if (status == STATUS_OK) {
-                            vdnh3[ij] = (TF)1.0 / (ra[ij] + rb + rc_eff);
-                        }
-                    }
-                    else {
-                        // Wet soil case
-                        const TF rb = (TF)1.0 / (ckarman * ustar[ij]) * diff_scl[0];
-                        
-                        depac_wrapper(
-                            compnam,
-                            day_of_year,
-                            lat,
-                            temperature,
-                            ustar[ij],
-                            glrad,
-                            sinphi,
-                            rh,
-                            lai[ij],
-                            sai,
-                            1,  // nwet = 1 for wet conditions
-                            lu,
-                            iratns,
-                            &rc_tot,
-                            &ccomp_tot,
-                            hlaw,
-                            react,
-                            &status,
-                            c_ave_prev_nh3,
-                            ra[ij],
-                            rb,
-                            catm,
-                            &rc_eff,
-                            &gsoil_eff_out,
-                            &rsoil_eff_out
-                        );
-
-                        if (status == STATUS_OK) {
-                            vdnh3[ij] = (TF)1.0 / (ra[ij] + rb + rsoil_eff_out);
-                        }
-                    }
-                }
-        }
-    }
 }
 
 template<typename TF>
@@ -451,7 +457,7 @@ Deposition<TF>::Deposition(Master& masterin, Grid<TF>& gridin, Fields<TF>& field
     master(masterin), grid(gridin), fields(fieldsin)
 {
     sw_deposition = inputin.get_item<bool>("deposition", "swdeposition", "", false);
-	    
+
     // Added: Initialize DEPAC parameters for NH3 deposition
 
     // Radiation parameters
@@ -470,13 +476,15 @@ Deposition<TF>::Deposition(Master& masterin, Grid<TF>& gridin, Fields<TF>& field
     day_of_year = inputin.get_item<int>("deposition", "day_of_year", "", 217);        // Day of year: 18 August
     nwet = inputin.get_item<int>("deposition", "nwet", "", 0);                        // Surface wetness indicator
     lu = inputin.get_item<int>("deposition", "lu", "", 4);                            // Land use type
-    
+
     // NH3-specific parameters
     iratns = inputin.get_item<int>("deposition", "iratns", "", 2);                    // NH3 compensation point option
     hlaw = inputin.get_item<TF>("deposition", "hlaw", "", (TF)6.1e4);                 //rmes = 1/(henry/3000.+100.*react)  ! Wesely '89, eq. 6
     react = inputin.get_item<TF>("deposition", "react", "", (TF)0.0);                 // Reactivity factor
     c_ave_prev_nh3 = inputin.get_item<TF>("deposition", "c_ave_prev_nh3", "", (TF)5.0); // Previous NH3 concentration (μg/m3)
     catm = inputin.get_item<TF>("deposition", "catm", "", (TF)0.76);                  // Atmospheric NH3 concentration (μg/m3) (0.76 μg/m3 ~ 1 ppb)
+    pressure = inputin.get_item<TF>("deposition", "pressure", "", (TF)1.013e5);  // Default sea level pressure
+
 }
 
 
@@ -589,10 +597,10 @@ void Deposition<TF>::create(Stats<TF>& stats, Cross<TF>& cross)
     if (cross.get_switch())
     {
         std::vector<std::string> allowed_crossvars = {
-                // "vdo3_soil", "vdno_soil", "vdno2_soil", "vdhno3_soil", "vdh2o2_soil", "vdrooh_soil", "vdhcho_soil",
-                // "vdo3_wet", "vdno_wet", "vdno2_wet", "vdhno3_wet", "vdh2o2_wet", "vdrooh_wet", "vdhcho_wet",
-                // "vdo3_veg", "vdno_veg", "vdno2_veg", "vdhno3_veg", "vdh2o2_veg", "vdrooh_veg", "vdhcho_veg"
-                "vdnh3_soil", "vdnh3_wet", "vdnh3_veg"};  // Modified for NH3 only
+            // "vdo3_soil", "vdno_soil", "vdno2_soil", "vdhno3_soil", "vdh2o2_soil", "vdrooh_soil", "vdhcho_soil",
+            // "vdo3_wet", "vdno_wet", "vdno2_wet", "vdhno3_wet", "vdh2o2_wet", "vdrooh_wet", "vdhcho_wet",
+            // "vdo3_veg", "vdno_veg", "vdno2_veg", "vdhno3_veg", "vdh2o2_veg", "vdrooh_veg", "vdhcho_veg"
+            "vdnh3_soil", "vdnh3_wet", "vdnh3_veg"};  // Modified for NH3 only
         cross_list = cross.get_enabled_variables(allowed_crossvars);
     }
 }
@@ -644,7 +652,7 @@ void Deposition<TF>::update_time_dependent(
                 tile.second.fraction.data(),
                 //rmes.data(), rsoil.data(), rcut.data(),
                 //rws.data(), rwat.data(),
-		diff_scl.data(),   
+                diff_scl.data(),   
                 // Added: DEPAC parameters
                 glrad,          // Global radiation
                 sinphi,         // Sine of solar elevation
@@ -660,10 +668,11 @@ void Deposition<TF>::update_time_dependent(
                 react,         // Reactivity factor
                 c_ave_prev_nh3, // Previous NH3 concentration
                 catm,          // Atmospheric NH3 concentration
+                pressure,
                 gd.istart, gd.iend,
                 gd.jstart, gd.jend,
                 gd.icells);
-	}
+    }
 
     // Calculate tile-mean deposition for chemistry
     // get_tiled_mean(vdo3,"o3",(TF) 1.0,tiles.at("veg").fraction.data(), tiles.at("soil").fraction.data(), tiles.at("wet").fraction.data());
@@ -789,10 +798,10 @@ const TF Deposition<TF>::get_vd(const std::string& name) const
 
 template<typename TF>
 void Deposition<TF>::get_tiled_mean(
-    TF* restrict fld_out, std::string name, const TF fac,
-    const TF* const restrict fveg,
-    const TF* const restrict fsoil,
-    const TF* const restrict fwet)
+        TF* restrict fld_out, std::string name, const TF fac,
+        const TF* const restrict fveg,
+        const TF* const restrict fsoil,
+        const TF* const restrict fwet)
 {
     auto& gd = grid.get_grid_data();
 
@@ -933,28 +942,28 @@ void Deposition<TF>::update_vd_water(
         throw std::runtime_error("Cannot update vd to water for variable \"" + name + "\"\\n");
 
     calc_vd_water(
-        fld_out,
-        ra,
-        ustar,
-        water_mask,
-        diff_scl_val,
-        rwat_val,
-        gd.istart, gd.iend,
-        gd.jstart, gd.jend,
-        gd.icells);
+            fld_out,
+            ra,
+            ustar,
+            water_mask,
+            diff_scl_val,
+            rwat_val,
+            gd.istart, gd.iend,
+            gd.jstart, gd.jend,
+            gd.icells);
 }
 
 template<typename TF>
 void Deposition<TF>::spatial_avg_vd(
-    TF* restrict fld_out)
+        TF* restrict fld_out)
 {
     auto& gd = grid.get_grid_data();
 
     calc_spatial_avg_deposition(
-        fld_out,
-        gd.istart, gd.iend,
-        gd.jstart, gd.jend,
-        gd.icells);
+            fld_out,
+            gd.istart, gd.iend,
+            gd.jstart, gd.jend,
+            gd.icells);
 }
 
 template class Deposition<double>;
