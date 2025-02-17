@@ -77,102 +77,103 @@ namespace
 
 
     template<typename TF>
-    void pss(
-            TF* restrict tnh3, const TF* const restrict nh3,
-            const TF* const restrict jval,
-            const TF* const restrict emval,
-            const TF* const restrict vdnh3,
-            const TF* const restrict tprof,
-            const TF* const restrict qprof,
-            const TF* const restrict dzi,
-            const TF* const restrict rhoref,
-            TF* restrict rfa,
-	    TF* restrict flux_nh3,  // New parameter for flux
-	    TF* restrict flux_inst, // Add this line for instantaneous flux
-            TF& trfa,
-            const TF dt,
-            const TF sdt,
-            const TF lifetime,
-            const int istart, const int iend,
-            const int jstart, const int jend,
-            const int kstart, const int kend,
-            const int jstride, const int kstride,
-	    const TF dx,
-	    const TF dy)
-    {
-
-        const TF xmh2o = 18.015265;
-        const TF xmnh3 = 17.031;
-        const TF xmh2o_i = TF(1) / xmh2o;
-        const TF xmair = 28.9647;       // Molar mass of dry air  [kg kmol-1]
-        const TF xmair_i = TF(1) / xmair;
-        const TF Na = 6.02214086e23; // Avogadros number [molecules mol-1]
-
-
-        // Update the time integration of the reaction fluxes with the full timestep on first RK3 step
-        //if (abs(sdt/dt - 1./3.) < 1e-5) trfa += dt;
-        trfa += sdt;
-
-        for (int k=kstart; k<kend; ++k)
-        {
-            const TF C_M = TF(1e-3) * rhoref[k] * Na * xmair_i;   // molecules/cm3 for chmistry!
-
-            // From ppb (units mixing ratio) to molecules/cm3 --> changed: now mol/mol unit for transported tracers:
-            const TF CFACTOR = C_M;
-            const TF sdt_cfac_i = TF(1) / (sdt * CFACTOR);
-            const TF lti = TF(1)/lifetime;  // 1/s
-            TF decay;
-            for (int j=jstart; j<jend; ++j)
-                #pragma ivdep
-                for (int i=istart; i<iend; ++i)
+        void pss(
+                TF* restrict tnh3,
+                const TF* const restrict nh3,
+                const TF* const restrict jval,
+                const TF* const restrict emval,
+                const TF* const restrict vdnh3,
+                const TF* const restrict tprof,
+                const TF* const restrict qprof,
+                const TF* const restrict dzi,
+                const TF* const restrict rhoref,
+                TF* restrict rfa,
+                TF* restrict flux_nh3,  // New parameter for flux
+                TF* restrict flux_inst, // Add this line for instantaneous flux
+                TF& trfa,
+                const TF dt,
+                const TF sdt,
+                const TF lifetime,
+                const int istart, const int iend,
+                const int jstart, const int jend,
+                const int kstart, const int kend,
+                const int jstride, const int kstride,
+                const TF dx,
+                const TF dy)
                 {
-                    const int ijk = i + j*jstride + k*kstride;
-                    const int ij = i + j*jstride;
 
-                    // kg/kg --> molH2O/molAir --*C_M--> molecules/cm3 limit to 1 molecule/cm3 to avoid error usr_HO2_HO2
-                    // const TF C_H2O = std::max(qt[ijk] * xmair * C_M * xmh2o_i, TF(1));
-                    // const TF TEMP = temp[ijk];
-
-                    if (k==kstart)
-                        {
-                    	   // Calculate and accumulate flux for this RK3 step
-                    	   // Note: flux is accumulated (+=) and scaled by sdt
-
-			   //TF flux = (-1.0) * vdnh3[ij] * nh3[ijk] * rhoref[k] * xmair_i * xmnh3 * sdt; // [kg(NH3) m-2 s-1]
-			   //TF flux[ij] = (-1.0) * 1.0e3 * vdnh3[ij] * nh3[ijk] * rhoref[k] * xmair_i * sdt; // [mol(NH3) m-2 s-1 * sdt!!!]
-			   //flux_nh3[ij] = (-1.0) * 1.0e3 * vdnh3[ij] * nh3[ijk] * rhoref[k] * xmair_i * sdt; // [mol(NH3) m-2 s-1 * sdt!!!]
+                    const TF xmh2o = 18.015265;
+                    const TF xmnh3 = 17.031;
+                    const TF xmh2o_i = TF(1) / xmh2o;
+                    const TF xmair = 28.9647;       // Molar mass of dry air  [kg kmol-1]
+                    const TF xmair_i = TF(1) / xmair;
+                    const TF Na = 6.02214086e23; // Avogadros number [molecules mol-1]
 
 
-			   // Calculate instantaneous flux first
-			   flux_inst[ij] = (-1.0) * vdnh3[ij] * nh3[ijk] * rhoref[k] * xmair_i * xmnh3; // [kg(NH3) m-2 s-1]
-			   
-			   // Then calculate accumulated flux using the instantaneous value
-			   TF flux = flux_inst[ij] * sdt; // Scale by timestep for accumulation
+                    // Update the time integration of the reaction fluxes with the full timestep on first RK3 step
+                    //if (abs(sdt/dt - 1./3.) < 1e-5) trfa += dt;
+                    trfa += sdt;
 
-			   //TF flux = (-1.0) * vdnh3[ij] * nh3[ijk] * rhoref[k] * xmair_i * xmnh3 * sdt; // [kg(NH3) m-2 s-1] 
-			   flux_nh3[ij] += flux;        // For period statistics
-		  	   decay = vdnh3[ij]*dzi[k] + lti;   // 1/s
-   			}
-		    else
-		        { 
-		  	   decay = lti; // 1/s
-			}
-		    // update tendencies:
-		    tnh3[ijk] -= decay*nh3[ijk];
+                    for (int k=kstart; k<kend; ++k)
+                    {
+                        const TF C_M = TF(1e-3) * rhoref[k] * Na * xmair_i;   // molecules/cm3 for chmistry!
 
-                    // Get statistics for reaction fluxes:
-                    //if (abs(sdt/dt - 1./3.) < 1e-5)
-                    //{
-                    //    for (int l=0; l<NREACT; ++l)
-                    //        rfa[(k-kstart)*NREACT+l] +=  RF[l]*dt;    // take the first evaluation in the RK3 steps, but with full time step.
-                    //}
+                        // From ppb (units mixing ratio) to molecules/cm3 --> changed: now mol/mol unit for transported tracers:
+                        const TF CFACTOR = C_M;
+                        const TF sdt_cfac_i = TF(1) / (sdt * CFACTOR);
+                        const TF lti = TF(1)/lifetime;  // 1/s
+                        TF decay;
+                        for (int j=jstart; j<jend; ++j)
+                        #pragma ivdep
+                            for (int i=istart; i<iend; ++i)
+                            {
+                                const int ijk = i + j*jstride + k*kstride;
+                                const int ij = i + j*jstride;
 
-                    //  Reculculate tendency and add to the tendency of the transported tracers:
+                                // kg/kg --> molH2O/molAir --*C_M--> molecules/cm3 limit to 1 molecule/cm3 to avoid error usr_HO2_HO2
+                                // const TF C_H2O = std::max(qt[ijk] * xmair * C_M * xmh2o_i, TF(1));
+                                // const TF TEMP = temp[ijk];
 
- 
-        	} // i
-    	} // k
-    }
+                                if (k==kstart)
+                                {
+                                    // Calculate and accumulate flux for this RK3 step
+                                    // Note: flux is accumulated (+=) and scaled by sdt
+
+                                    //TF flux = (-1.0) * vdnh3[ij] * nh3[ijk] * rhoref[k] * xmair_i * xmnh3 * sdt; // [kg(NH3) m-2 s-1]
+                                    //TF flux[ij] = (-1.0) * 1.0e3 * vdnh3[ij] * nh3[ijk] * rhoref[k] * xmair_i * sdt; // [mol(NH3) m-2 s-1 * sdt!!!]
+                                    //flux_nh3[ij] = (-1.0) * 1.0e3 * vdnh3[ij] * nh3[ijk] * rhoref[k] * xmair_i * sdt; // [mol(NH3) m-2 s-1 * sdt!!!]
+
+
+                                    // Calculate instantaneous flux first
+                                    flux_inst[ij] = (-1.0) * vdnh3[ij] * nh3[ijk] * rhoref[k] * xmair_i * xmnh3; // [kg(NH3) m-2 s-1]
+
+                                    // Then calculate accumulated flux using the instantaneous value
+                                    TF flux = flux_inst[ij] * sdt; // Scale by timestep for accumulation
+
+                                    //TF flux = (-1.0) * vdnh3[ij] * nh3[ijk] * rhoref[k] * xmair_i * xmnh3 * sdt; // [kg(NH3) m-2 s-1] 
+                                    flux_nh3[ij] += flux;        // For period statistics
+                                    decay = vdnh3[ij]*dzi[k] + lti;   // 1/s
+                                }
+                                else
+                                { 
+                                    decay = lti; // 1/s
+                                }
+                                // update tendencies:
+                                tnh3[ijk] -= decay*nh3[ijk];
+
+                                // Get statistics for reaction fluxes:
+                                //if (abs(sdt/dt - 1./3.) < 1e-5)
+                                //{
+                                //    for (int l=0; l<NREACT; ++l)
+                                //        rfa[(k-kstart)*NREACT+l] +=  RF[l]*dt;    // take the first evaluation in the RK3 steps, but with full time step.
+                                //}
+
+                                //  Reculculate tendency and add to the tendency of the transported tracers:
+
+
+                            } // i
+                    } // k
+                }
 }
 
 template<typename TF>
@@ -213,26 +214,26 @@ void Chemistry<TF>::exec_stats(const int iteration, const double time, Stats<TF>
     {
         // add deposition velocities to statistics:
         stats.calc_stats_2d("vdnh3"   , vdnh3,   no_offset);
-	
-	
+
+
         for (int j=gd.jstart; j<gd.jend; ++j)
             for (int i=gd.istart; i<gd.iend; ++i)
-                {
-                    const int ij = i + j*gd.jstride;
-		    flux_nh3[ij] /= trfa;
-		} 
+            {
+                const int ij = i + j*gd.jstride;
+                flux_nh3[ij] /= trfa;
+            } 
 
-	stats.calc_stats_2d("flux_nh3", flux_nh3, no_offset); //added for nh3_flux
-	stats.calc_stats_2d("flux_inst", flux_inst, no_offset); // added for instantaneous deposition flux of NH3
+        stats.calc_stats_2d("flux_nh3", flux_nh3, no_offset); //added for nh3_flux
+        stats.calc_stats_2d("flux_inst", flux_inst, no_offset); // added for instantaneous deposition flux of NH3
 
 
-	// Reset the periodic flux after saving to stats
-    	trfa = 0;
-    	std::fill(flux_nh3.begin(), flux_nh3.end(), TF(0));
- 
+        // Reset the periodic flux after saving to stats
+        trfa = 0;
+        std::fill(flux_nh3.begin(), flux_nh3.end(), TF(0));
+
         // sum of all PEs:
         // printf("trfa: %13.4e iteration: %i time: %13.4e \n", trfa,iteration,time);
-	master.sum(rfa.data(),NREACT*gd.ktot);
+        master.sum(rfa.data(),NREACT*gd.ktot);
         // for (int l=0; l<NREACT*gd.ktot; ++l)
         //     rfa[l] /= (trfa*gd.itot*gd.jtot);    // mean over the horizontal plane in molecules/(cm3 * s)
 
@@ -250,8 +251,8 @@ void Chemistry<TF>::exec_stats(const int iteration, const double time, Stats<TF>
         const int ksize = NREACT*gd.ktot;
         std::vector<int> time_rfaz_size  = {1, ksize};
         std::vector<TF> prof_nogc(
-            m.profs.at("chem_budget").data.begin() ,
-            m.profs.at("chem_budget").data.begin() + ksize);
+                m.profs.at("chem_budget").data.begin() ,
+                m.profs.at("chem_budget").data.begin() + ksize);
 
         m.profs.at("chem_budget").ncvar.insert(prof_nogc, time_rfaz_index, time_rfaz_size);
 
@@ -280,7 +281,7 @@ void Chemistry<TF>::init(Input& inputin)
 
     // initialize 2D deposition arrays:
     vdnh3.resize(gd.ijcells);
-    
+
     // added for nh3_flux (initialize nh3_flux arrays)
     flux_nh3.resize(gd.ijcells);
     std::fill(flux_nh3.begin(), flux_nh3.end(), TF(0));
@@ -387,7 +388,7 @@ void Chemistry<TF>::create(
 
         // Create variables belonging to dimensions.
         Netcdf_handle& iter_handle =
-                m.data_file->group_exists("default") ? m.data_file->get_group("default") : m.data_file->add_group("default");
+            m.data_file->group_exists("default") ? m.data_file->get_group("default") : m.data_file->add_group("default");
 
         m.iter_var = std::make_unique<Netcdf_variable<int>>(iter_handle.add_variable<int>("iter", {"time"}));
         m.iter_var->add_attribute("units", "-");
@@ -419,7 +420,7 @@ void Chemistry<TF>::create(
         Level_type level =  Level_type::Full;
 
         Netcdf_handle& handle =
-                m.data_file->group_exists("default") ? m.data_file->get_group("default") : m.data_file->add_group("default");
+            m.data_file->group_exists("default") ? m.data_file->get_group("default") : m.data_file->add_group("default");
         Prof_var<TF> tmp{handle.add_variable<TF>(name, {"time", "rfaz"}), std::vector<TF>(gd.ktot*NREACT), level};
         m.profs.emplace(
                 std::piecewise_construct, std::forward_as_tuple(name), std::forward_as_tuple(std::move(tmp)));
@@ -444,7 +445,7 @@ void Chemistry<TF>::create(
 
         // used in chemistry:
         stats.add_time_series("vdnh3", "NH3 deposition velocity", "m s-1", group_named);
-	//stats.add_time_series("flux_nh3", "NH3 surface flux", "mol(NH3) m-2 s-1", group_named);
+        //stats.add_time_series("flux_nh3", "NH3 surface flux", "mol(NH3) m-2 s-1", group_named);
     }
 
     // add cross-sections
@@ -473,10 +474,10 @@ void Chemistry<TF>::exec_cross(Cross<TF>& cross, unsigned long iotime)
     {
         if (name == "vdnh3")
             cross.cross_plane(vdnh3.data(), no_offset, name, iotime);
-	else if (name == "flux_nh3") //added for nh3_flux
+        else if (name == "flux_nh3") //added for nh3_flux
             cross.cross_plane(flux_nh3.data(), no_offset, name, iotime);
-	else if (name == "flux_inst")  //added for instantaneous deposition flux of NH3
-	    cross.cross_plane(flux_inst.data(), no_offset, name, iotime);
+        else if (name == "flux_inst")  //added for instantaneous deposition flux of NH3
+            cross.cross_plane(flux_inst.data(), no_offset, name, iotime);
     }
 
     // see if to write per tile:
@@ -525,26 +526,26 @@ void Chemistry<TF>::exec(Thermo<TF>& thermo,double sdt,double dt)
     field3d_operators.calc_mean_profile(tprof.data(), tmp->fld.data());
     qprof = fields.sp.at("qt")->fld_mean;
     //field3d_operators.calc_mean_profile(qprof.data(), fields.sp.at("qt")->fld.data());
- 
+
 
     pss<TF>(
-        fields.st.at("nh3")->fld.data(), fields.sp.at("nh3")->fld.data(),
-        jval, emval,
-        vdnh3.data(),
-        tprof.data(),
-        qprof.data(),
-        gd.dzi.data(),
-        fields.rhoref.data(),
-        rfa.data(),
-	flux_nh3.data(),  //added for nh3_flux
-	flux_inst.data(), //added for instantaneous deposition flux of NH3
-        trfa, //accumulated for the time
-        dt, sdt, lifetime,
-        gd.istart, gd.iend,
-        gd.jstart, gd.jend,
-        gd.kstart, gd.kend,
-        gd.icells, gd.ijcells,
-	gd.dx, gd.dy);    // Add these parameters
+            fields.st.at("nh3")->fld.data(), fields.sp.at("nh3")->fld.data(),
+            jval, emval,
+            vdnh3.data(),
+            tprof.data(),
+            qprof.data(),
+            gd.dzi.data(),
+            fields.rhoref.data(),
+            rfa.data(),
+            flux_nh3.data(),  //added for nh3_flux
+            flux_inst.data(), //added for instantaneous deposition flux of NH3
+            trfa, //accumulated for the time
+            dt, sdt, lifetime,
+            gd.istart, gd.iend,
+            gd.jstart, gd.jend,
+            gd.kstart, gd.kend,
+            gd.icells, gd.ijcells,
+            gd.dx, gd.dy);    // Add these parameters
 
     fields.release_tmp(tmp);
 
