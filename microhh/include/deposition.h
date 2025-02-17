@@ -22,7 +22,7 @@ template<typename TF>
 struct Deposition_tile
 {
     std::string long_name;    // Descriptive name of tile
-    // Land surface
+                              // Land surface
     std::vector<TF> vdnh3;    // Deposition velocity of NH3 (m s-1)
 };
 
@@ -39,9 +39,9 @@ class Deposition
         void init(Input&);
         void create(Stats<TF>&, Cross<TF>&);
         void update_time_dependent(
-            Timeloop<TF>&, 
-            Boundary<TF>&,
-            TF* restrict vdnh3);  // Modified for NH3 only
+                Timeloop<TF>&, 
+                Boundary<TF>&,
+                TF* restrict vdnh3);  // Modified for NH3 only
 
         const TF get_vd(const std::string&) const;
         void get_tiled_mean(TF*, std::string, TF, const TF*, const TF*, const TF*);
@@ -81,7 +81,7 @@ class Deposition
 
         // NH3 specific parameters
         TF vd_nh3;            // NH3 deposition velocity
-        
+
         // DEPAC configuration 
         // Environmental parameters
         TF glrad;             // Global radiation (W/m2)
@@ -90,18 +90,19 @@ class Deposition
         TF rh;               // Relative humidity (%)
         TF sai;              // Stem area index (m2/m2)
         TF lat;              // Latitude (degrees)
-        
+
         // Time and surface parameters
         int day_of_year;     // Day of year
         int nwet;            // Surface wetness indicator
         int lu;              // Land use type
-        
+
         // Chemical parameters
         int iratns;          // NH3 compensation point option
         TF hlaw;             // Henry's law constant for NH3
         TF react;            // Reactivity factor
         TF c_ave_prev_nh3;   // Previous NH3 concentration (μg/m3)
         TF catm;             // Atmospheric NH3 concentration (μg/m3)
+        TF pressure;        // Pressure (Pa)
 
         // Tile management
         std::vector<std::string> deposition_tile_names {"veg", "soil", "wet"};
