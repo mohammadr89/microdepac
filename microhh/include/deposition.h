@@ -83,14 +83,18 @@ class Deposition
         // NH3 specific parameters
         TF vd_nh3;            // NH3 deposition velocity
 
-        // DEPAC configuration 
-        // Environmental parameters
-        TF glrad;             // Global radiation (W/m2)
-        TF sinphi;            // Sine of solar elevation
-        TF temperature;       // Air temperature (K)
+        // DEPAC configuration - Environmental parameters
+        // Time-dependent radiation parameters
+        // TF t0;               // Start time (s)
+        // TF td;               // Day length (s)
+        // TF max_rad;          // Maximum radiation (W/m2)
+        TF glrad;            // Global radiation (W/m2)
+        TF sinphi;           // Sine of solar elevation
+        TF temperature;      // Air temperature (K)
         TF rh;               // Relative humidity (%)
         TF sai;              // Stem area index (m2/m2)
         TF lat;              // Latitude (degrees)
+
 
         // Time and surface parameters
         int day_of_year;     // Day of year
