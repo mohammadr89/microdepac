@@ -223,20 +223,20 @@ namespace {
             // Ensure value stays within [-1,1] to avoid numerical errors
             sinphi = std::max(TF(-1.0), std::min(TF(1.0), sinphi));
 
-            // Debug prints
-            std::cout << "\n=== Solar Angle Calculation Debug ===" << std::endl;
-            std::cout << "Inputs:" << std::endl;
-            std::cout << "  Day of year: " << day_of_year << std::endl;
-            std::cout << "  Latitude: " << latitude << "°N" << std::endl;
-            std::cout << "  Hour: " << hour << ":00" << std::endl;
-            std::cout << "Calculated values:" << std::endl;
-            std::cout << "  Day angle: " << day_angle * rad2deg << "°" << std::endl;
-            std::cout << "  Declination: " << declination * rad2deg << "°" << std::endl;
-            std::cout << "  Hour angle: " << hour_angle * rad2deg << "°" << std::endl;
-            std::cout << "  Sinphi: " << sinphi << std::endl;
-            std::cout << "  Solar elevation angle: " << std::asin(sinphi) * rad2deg << "°" << std::endl;
-            std::cout << "  Solar zenith angle: " << 90.0 - (std::asin(sinphi) * rad2deg) << "°" << std::endl;
-            std::cout << "==================================\n" << std::endl;
+            //// Debug prints
+            //std::cout << "\n=== Solar Angle Calculation Debug ===" << std::endl;
+            //std::cout << "Inputs:" << std::endl;
+            //std::cout << "  Day of year: " << day_of_year << std::endl;
+            //std::cout << "  Latitude: " << latitude << "°N" << std::endl;
+            //std::cout << "  Hour: " << hour << ":00" << std::endl;
+            //std::cout << "Calculated values:" << std::endl;
+            //std::cout << "  Day angle: " << day_angle * rad2deg << "°" << std::endl;
+            //std::cout << "  Declination: " << declination * rad2deg << "°" << std::endl;
+            //std::cout << "  Hour angle: " << hour_angle * rad2deg << "°" << std::endl;
+            //std::cout << "  Sinphi: " << sinphi << std::endl;
+            //std::cout << "  Solar elevation angle: " << std::asin(sinphi) * rad2deg << "°" << std::endl;
+            //std::cout << "  Solar zenith angle: " << 90.0 - (std::asin(sinphi) * rad2deg) << "°" << std::endl;
+            //std::cout << "==================================\n" << std::endl;
 
             return sinphi;
         }
