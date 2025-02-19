@@ -486,12 +486,24 @@ Deposition<TF>::Deposition(Master& masterin, Grid<TF>& gridin, Fields<TF>& field
 
     // Added: Initialize DEPAC parameters for NH3 deposition
 
-    // t0 = inputin.get_item<TF>("deposition", "start_time", "", TF(7*3600));   // 7:00
-    // td = inputin.get_item<TF>("deposition", "day_length", "", TF(12*3600));  // 12 hours
-    // max_rad = inputin.get_item<TF>("deposition", "max_radiation", "", TF(600.0)); // Max radiation
+
+    // Get start hour from input
+    TF start_hour = inputin.get_item<TF>("deposition", "start_hour", "", TF(7.0));  // Default 7:00
+    
+    // Initialize radiation parameters
+    t0 = start_hour * 3600;        // Convert start hour to seconds (e.g., 7:00 = 25200s)
+    td = TF(12*3600);              // 12 hour day length
+    max_rad = TF(600.0);           // Maximum radiation 600 W/m2
+    glrad = TF(0.0);               // Initial value
+
+    master.print_message("Radiation parameters initialized:\n");
+    master.print_message("  start_hour = %f\n", start_hour);
+    master.print_message("  t0 = %f s\n", t0);
+    master.print_message("  td = %f s\n", td);
+    master.print_message("  max_rad = %f W/m2\n", max_rad);
 
     // Radiation parameters
-    glrad = inputin.get_item<TF>("deposition", "glrad", "", (TF)600.0);                // Global radiation (W/m2)
+    //glrad = inputin.get_item<TF>("deposition", "glrad", "", (TF)400.0);                // Global radiation (W/m2)
     sinphi = inputin.get_item<TF>("deposition", "sinphi", "", (TF)0.75);               // Sine of solar elevation:  Solar elevation angle at noon ≈ 48.5° ==>  sinphi = sin(48.5°) ≈ 0.75
 
     // Meteorological parameters
@@ -656,6 +668,22 @@ void Deposition<TF>::update_time_dependent(
 
     auto& gd = grid.get_grid_data();
 
+    // Get current model time
+    const TF model_time = timeloop.get_time();
+    
+    // Calculate actual time of day (t0 is 7:00 = 25200 seconds)
+    const TF actual_time = t0 + model_time;
+    
+    // Debug prints
+    master.print_message("Time components: model_time = %f, actual_time = %f, t0 = %f, td = %f, max_rad = %f\n", 
+                        model_time, actual_time, t0, td, max_rad);
+    
+    // Calculate radiation using actual time of day
+    glrad = max_rad * std::sin(M_PI * (actual_time - t0) / td);
+    glrad = std::max(glrad, TF(0.0));
+    
+    master.print_message("Global radiation = %f W/m2\n", glrad);
+
     // Get RH from thermo and convert to %
     auto tmp1 = fields.get_tmp();
     thermo.get_thermo_field(*tmp1, "rh", true, false);
@@ -673,11 +701,6 @@ void Deposition<TF>::update_time_dependent(
     //std::cout << "Temperature from MicroHH (K): " << temperature << std::endl;
     //std::cout << "Temperature passed to DEPAC (C): " << temperature << std::endl;
 
-    // // Get RH from thermo
-    // auto tmp = fields.get_tmp();
-    // thermo.get_thermo_field(*tmp, "rh", true, false);
-    // rh = tmp->fld.data()[0] * 100.0;  // Store converted RH (in %) in member variable
-    // fields.release_tmp(tmp);
 
     // get information from lsm:
     auto& tiles = boundary.get_tiles();

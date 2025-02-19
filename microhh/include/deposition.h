@@ -85,9 +85,9 @@ class Deposition
 
         // DEPAC configuration - Environmental parameters
         // Time-dependent radiation parameters
-        // TF t0;               // Start time (s)
-        // TF td;               // Day length (s)
-        // TF max_rad;          // Maximum radiation (W/m2)
+        TF t0;               // Start time (s)
+        TF td;               // Day length (s)
+        TF max_rad;          // Maximum radiation (W/m2)
         TF glrad;            // Global radiation (W/m2)
         TF sinphi;           // Sine of solar elevation
         TF temperature;      // Air temperature (K)
