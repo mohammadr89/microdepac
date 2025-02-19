@@ -257,7 +257,7 @@ namespace {
                                 // Keep IFS Ra and use vegetation Rb scaling
                                 const TF rb = TF(2.0) / (ckarman * ustar[ij]) * diff_scl[0];
 
-                                //const TF nh3_ugm3 = nh3_concentration[ijk] * pressure * xmnh3 / (R * temperature) * 1e6;
+                                //const TF nh3_ugm3 = nh3_concentration[ijk] * pressure * xmnh3 / (R * temperature) * 1e9;
                                 const TF nh3_ugm3 = nh3_concentration[ijk] * xmnh3 / 22.414 * 1.0e9; //mol/mol to ug/m3 conversion(STP)
 
 
@@ -318,7 +318,7 @@ namespace {
                                 // Use soil Rb scaling
                                 const TF rb = (TF)1.0 / (ckarman * ustar[ij]) * diff_scl[0];
 
-                                //const TF nh3_ugm3 = nh3_concentration[ijk] * pressure * xmnh3 / (R * temperature) * 1e6;
+                                //const TF nh3_ugm3 = nh3_concentration[ijk] * pressure * xmnh3 / (R * temperature) * 1e9;
                                 const TF nh3_ugm3 = nh3_concentration[ijk] * xmnh3 / 22.414 * 1.0e9; //mol/mol to ug/m3 conversion(STP)
 
                                 // Call DEPAC wrapper for dry soil
@@ -392,7 +392,7 @@ namespace {
                                     // Wet vegetation case
                                     const TF rb = TF(2.0) / (ckarman * ustar[ij]) * diff_scl[0];
 
-                                    //const TF nh3_ugm3 = nh3_concentration[ijk] * pressure * xmnh3 / (R * temperature) * 1e6;
+                                    //const TF nh3_ugm3 = nh3_concentration[ijk] * pressure * xmnh3 / (R * temperature) * 1e9;
                                     const TF nh3_ugm3 = nh3_concentration[ijk] * xmnh3 / 22.414 * 1.0e9; //mol/mol to ug/m3 conversion(STP)
 
                                     depac_wrapper(
@@ -435,7 +435,7 @@ namespace {
                                     // Wet soil case
                                     const TF rb = (TF)1.0 / (ckarman * ustar[ij]) * diff_scl[0];
 
-                                    //const TF nh3_ugm3 = nh3_concentration[ijk] * pressure * xmnh3 / (R * temperature) * 1e6;
+                                    //const TF nh3_ugm3 = nh3_concentration[ijk] * pressure * xmnh3 / (R * temperature) * 1e9;
                                     const TF nh3_ugm3 = nh3_concentration[ijk] * xmnh3 / 22.414 * 1.0e9; //mol/mol to ug/m3 conversion(STP)
 
                                     depac_wrapper(
@@ -486,13 +486,17 @@ Deposition<TF>::Deposition(Master& masterin, Grid<TF>& gridin, Fields<TF>& field
 
     // Added: Initialize DEPAC parameters for NH3 deposition
 
+    // t0 = inputin.get_item<TF>("deposition", "start_time", "", TF(7*3600));   // 7:00
+    // td = inputin.get_item<TF>("deposition", "day_length", "", TF(12*3600));  // 12 hours
+    // max_rad = inputin.get_item<TF>("deposition", "max_radiation", "", TF(600.0)); // Max radiation
+
     // Radiation parameters
     glrad = inputin.get_item<TF>("deposition", "glrad", "", (TF)600.0);                // Global radiation (W/m2)
     sinphi = inputin.get_item<TF>("deposition", "sinphi", "", (TF)0.75);               // Sine of solar elevation:  Solar elevation angle at noon ≈ 48.5° ==>  sinphi = sin(48.5°) ≈ 0.75
 
     // Meteorological parameters
-    temperature = inputin.get_item<TF>("deposition", "temperature", "", (TF)293.15);  // Air temperature (K)
-    rh = inputin.get_item<TF>("deposition", "rh", "", (TF)50.0);                      // Relative humidity (%)
+    temperature = inputin.get_item<TF>("deposition", "temperature", "", (TF)283.15);  // Air temperature (K)
+    rh = inputin.get_item<TF>("deposition", "rh", "", (TF)30.0);                      // Relative humidity (%)
 
     // Surface parameters
     sai = inputin.get_item<TF>("deposition", "sai", "", (TF)6.0);                     // Stem area index (m2/m2)
@@ -508,7 +512,8 @@ Deposition<TF>::Deposition(Master& masterin, Grid<TF>& gridin, Fields<TF>& field
     hlaw = inputin.get_item<TF>("deposition", "hlaw", "", (TF)6.1e4);                 //rmes = 1/(henry/3000.+100.*react)  ! Wesely '89, eq. 6
     react = inputin.get_item<TF>("deposition", "react", "", (TF)0.0);                 // Reactivity factor
     c_ave_prev_nh3 = inputin.get_item<TF>("deposition", "c_ave_prev_nh3", "", (TF)5.0); // Previous NH3 concentration (μg/m3)
-    catm = inputin.get_item<TF>("deposition", "catm", "", (TF)0.76);                  // Atmospheric NH3 concentration (μg/m3) (0.76 μg/m3 ~ 1 ppb)
+                                                                                        //c_ave_prev_nh3 = inputin.get_item<TF>("deposition", "c_ave_prev_nh3", "", (TF)0.0);
+                                                                                        //catm = inputin.get_item<TF>("deposition", "catm", "", (TF)0.76);                  // Atmospheric NH3 concentration (μg/m3) (0.76 μg/m3 ~ 1 ppb)
     pressure = inputin.get_item<TF>("deposition", "pressure", "", (TF)1.013e5);  // Default sea level pressure
 
 }
@@ -651,6 +656,29 @@ void Deposition<TF>::update_time_dependent(
 
     auto& gd = grid.get_grid_data();
 
+    // Get RH from thermo and convert to %
+    auto tmp1 = fields.get_tmp();
+    thermo.get_thermo_field(*tmp1, "rh", true, false);
+    rh = tmp1->fld.data()[0] * 100.0;
+    fields.release_tmp(tmp1);
+
+    // Get temperature from thermo and convert to Celsius
+    auto tmp2 = fields.get_tmp();
+    thermo.get_thermo_field(*tmp2, "T", true, false);
+    //temperature = tmp2->fld.data()[0] - 273.15;  // Convert K to °C
+    temperature = tmp2->fld.data()[0];
+    fields.release_tmp(tmp2);
+
+    //// debug prints
+    //std::cout << "Temperature from MicroHH (K): " << temperature << std::endl;
+    //std::cout << "Temperature passed to DEPAC (C): " << temperature << std::endl;
+
+    // // Get RH from thermo
+    // auto tmp = fields.get_tmp();
+    // thermo.get_thermo_field(*tmp, "rh", true, false);
+    // rh = tmp->fld.data()[0] * 100.0;  // Store converted RH (in %) in member variable
+    // fields.release_tmp(tmp);
+
     // get information from lsm:
     auto& tiles = boundary.get_tiles();
     auto& lai = boundary.get_lai();
@@ -682,7 +710,7 @@ void Deposition<TF>::update_time_dependent(
                                                   //rws.data(), rwat.data(),
                 diff_scl.data(),   
                 // Added: DEPAC parameters
-                glrad,          // Global radiation
+                glrad,          // Now using calculated time-dependent radiation
                 sinphi,         // Sine of solar elevation
                 temperature,    // Air temperature
                 rh,            // Relative humidity
