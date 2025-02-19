@@ -195,6 +195,60 @@ namespace {
 
 
     template<typename TF>
+        TF calculate_sinphi(int day_of_year, TF latitude, TF hour) {
+            // Convert degrees to radians
+            const TF deg2rad = M_PI / 180.0;
+            const TF rad2deg = 180.0 / M_PI;
+
+            // Calculate day angle
+            const TF day_angle = 2.0 * M_PI * (day_of_year - 1) / 365.0;
+
+            // Calculate solar declination (Spencer's formula)
+            const TF declination = 0.006918 
+                - 0.399912 * std::cos(day_angle) 
+                + 0.070257 * std::sin(day_angle) 
+                - 0.006758 * std::cos(2.0 * day_angle) 
+                + 0.000907 * std::sin(2.0 * day_angle) 
+                - 0.002697 * std::cos(3.0 * day_angle) 
+                + 0.001480 * std::sin(3.0 * day_angle);
+
+            // Calculate hour angle (15° per hour from solar noon)
+            const TF hour_angle = deg2rad * 15.0 * (hour - 12.0);
+
+            // Calculate sine of solar elevation
+            const TF lat_rad = deg2rad * latitude;
+            TF sinphi = std::sin(lat_rad) * std::sin(declination) + 
+                std::cos(lat_rad) * std::cos(declination) * std::cos(hour_angle);
+
+            // Ensure value stays within [-1,1] to avoid numerical errors
+            sinphi = std::max(TF(-1.0), std::min(TF(1.0), sinphi));
+
+            // Debug prints
+            std::cout << "\n=== Solar Angle Calculation Debug ===" << std::endl;
+            std::cout << "Inputs:" << std::endl;
+            std::cout << "  Day of year: " << day_of_year << std::endl;
+            std::cout << "  Latitude: " << latitude << "°N" << std::endl;
+            std::cout << "  Hour: " << hour << ":00" << std::endl;
+            std::cout << "Calculated values:" << std::endl;
+            std::cout << "  Day angle: " << day_angle * rad2deg << "°" << std::endl;
+            std::cout << "  Declination: " << declination * rad2deg << "°" << std::endl;
+            std::cout << "  Hour angle: " << hour_angle * rad2deg << "°" << std::endl;
+            std::cout << "  Sinphi: " << sinphi << std::endl;
+            std::cout << "  Solar elevation angle: " << std::asin(sinphi) * rad2deg << "°" << std::endl;
+            std::cout << "  Solar zenith angle: " << 90.0 - (std::asin(sinphi) * rad2deg) << "°" << std::endl;
+            std::cout << "==================================\n" << std::endl;
+
+            return sinphi;
+        }
+
+
+
+
+
+
+
+
+    template<typename TF>
         void calc_deposition_per_tile(
                 const std::string lu_type,
                 TF* restrict vdnh3,              // Output: NH3 deposition velocity
@@ -489,7 +543,7 @@ Deposition<TF>::Deposition(Master& masterin, Grid<TF>& gridin, Fields<TF>& field
 
     // Get start hour from input
     TF start_hour = inputin.get_item<TF>("deposition", "start_hour", "", TF(7.0));  // Default 7:00
-    
+
     // Initialize radiation parameters
     t0 = start_hour * 3600;        // Convert start hour to seconds (e.g., 7:00 = 25200s)
     td = TF(12*3600);              // 12 hour day length
@@ -670,19 +724,33 @@ void Deposition<TF>::update_time_dependent(
 
     // Get current model time
     const TF model_time = timeloop.get_time();
-    
+
     // Calculate actual time of day (t0 is 7:00 = 25200 seconds)
     const TF actual_time = t0 + model_time;
-    
-    // Debug prints
-    master.print_message("Time components: model_time = %f, actual_time = %f, t0 = %f, td = %f, max_rad = %f\n", 
-                        model_time, actual_time, t0, td, max_rad);
-    
+
+
+    //// Debug prints
+    //master.print_message("Time components: model_time = %f, actual_time = %f, t0 = %f, td = %f, max_rad = %f\n", 
+    //        model_time, actual_time, t0, td, max_rad);
+
     // Calculate radiation using actual time of day
     glrad = max_rad * std::sin(M_PI * (actual_time - t0) / td);
     glrad = std::max(glrad, TF(0.0));
+
+    //// Debug prints
+    //master.print_message("Global radiation = %f W/m2\n", glrad);
+
+    // Calculate current hour and sinphi
+    const TF current_hour = t0/3600.0 + (model_time / 3600.0);  // Convert t0 and model_time from seconds to hours
+    sinphi = calculate_sinphi(day_of_year, lat, current_hour);
     
-    master.print_message("Global radiation = %f W/m2\n", glrad);
+    //// Additional debug print for final values
+    //std::cout << "\n=== Final Values for DEPAC ===" << std::endl;
+    //std::cout << "Current hour: " << current_hour << std::endl;
+    //std::cout << "Global radiation: " << glrad << " W/m2" << std::endl;
+    //std::cout << "Sinphi: " << sinphi << std::endl;
+    //std::cout << "============================\n" << std::endl;
+
 
     // Get RH from thermo and convert to %
     auto tmp1 = fields.get_tmp();
@@ -693,7 +761,6 @@ void Deposition<TF>::update_time_dependent(
     // Get temperature from thermo and convert to Celsius
     auto tmp2 = fields.get_tmp();
     thermo.get_thermo_field(*tmp2, "T", true, false);
-    //temperature = tmp2->fld.data()[0] - 273.15;  // Convert K to °C
     temperature = tmp2->fld.data()[0];
     fields.release_tmp(tmp2);
 
