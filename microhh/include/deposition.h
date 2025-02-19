@@ -41,6 +41,7 @@ class Deposition
         void update_time_dependent(
                 Timeloop<TF>&, 
                 Boundary<TF>&,
+                Thermo<TF>& thermo,
                 TF* restrict vdnh3);  // Modified for NH3 only
 
         const TF get_vd(const std::string&) const;

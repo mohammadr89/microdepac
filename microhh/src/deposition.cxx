@@ -205,6 +205,7 @@ namespace {
                 const TF* const restrict ra,      // Aerodynamic resistance (from MicroHH)
                 const TF* const restrict ustar,   // Friction velocity
                 const TF* const restrict fraction, // Tile fraction
+                const TF* const restrict nh3_concentration, 
                 const TF* const restrict diff_scl, // Diffusion scaling factors
                 const TF glrad,          // Global radiation
                 const TF sinphi,         // Solar elevation angle
@@ -223,16 +224,21 @@ namespace {
                 const TF pressure,      // Added pressure parameter
                 const int istart, const int iend,
                 const int jstart, const int jend,
-                const int jj)
+                const int jj,
+                const int kstart,
+                const int ijcells)
                 {
                     const TF ckarman = 0.4;  // von Karman constant
                     const int STATUS_OK = 0;  // Status code for successful DEPAC calls
+                    const TF xmnh3 = 17.031;  // Molar mass of NH3 [g/mol]
+                    const TF R = 8.31446;     // Gas constant [J/mol/K]
 
                     if (lu_type == "veg") {
                         // Vegetation tile handling
                         for (int j=jstart; j<jend; ++j)
                             for (int i=istart; i<iend; ++i) {
                                 const int ij = i + j*jj;
+                                const int ijk = i + j*jj + kstart*ijcells;  // Added this for surface level
 
                                 if (fraction[ij] < (TF)1e-12)
                                     continue;
@@ -250,6 +256,10 @@ namespace {
 
                                 // Keep IFS Ra and use vegetation Rb scaling
                                 const TF rb = TF(2.0) / (ckarman * ustar[ij]) * diff_scl[0];
+
+                                //const TF nh3_ugm3 = nh3_concentration[ijk] * pressure * xmnh3 / (R * temperature) * 1e6;
+                                const TF nh3_ugm3 = nh3_concentration[ijk] * xmnh3 / 22.414 * 1.0e9; //mol/mol to ug/m3 conversion(STP)
+
 
                                 // Call DEPAC wrapper for dry vegetation
                                 char compnam[4] = "NH3";
@@ -281,7 +291,8 @@ namespace {
                                         c_ave_prev_nh3,
                                         ra[ij],
                                         rb,
-                                        catm,
+                                        nh3_ugm3,
+                                        //catm,
                                         &rc_eff,
                                         &gsoil_eff_out,
                                         &rsoil_eff_out,
@@ -299,12 +310,16 @@ namespace {
                         for (int j=jstart; j<jend; ++j)
                             for (int i=istart; i<iend; ++i) {
                                 const int ij = i + j*jj;
+                                const int ijk = i + j*jj + kstart*ijcells;  // Added this for surface level
 
                                 if (fraction[ij] < (TF)1e-12)
                                     continue;
 
                                 // Use soil Rb scaling
                                 const TF rb = (TF)1.0 / (ckarman * ustar[ij]) * diff_scl[0];
+
+                                //const TF nh3_ugm3 = nh3_concentration[ijk] * pressure * xmnh3 / (R * temperature) * 1e6;
+                                const TF nh3_ugm3 = nh3_concentration[ijk] * xmnh3 / 22.414 * 1.0e9; //mol/mol to ug/m3 conversion(STP)
 
                                 // Call DEPAC wrapper for dry soil
                                 char compnam[4] = "NH3";
@@ -334,16 +349,17 @@ namespace {
                                         c_ave_prev_nh3,
                                         ra[ij],
                                         rb,
-                                        catm,
+                                        nh3_ugm3,
+                                        //catm,
                                         &rc_eff,
                                         &gsoil_eff_out,
                                         &rsoil_eff_out,
                                         pressure
                                             );
 
-                                        if (status == STATUS_OK) {
-                                            vdnh3[ij] = (TF)1.0 / (ra[ij] + rb + rsoil_eff_out);
-                                        }
+                                if (status == STATUS_OK) {
+                                    vdnh3[ij] = (TF)1.0 / (ra[ij] + rb + rsoil_eff_out);
+                                }
                             }
                     }
                     else if (lu_type == "wet") {
@@ -351,6 +367,7 @@ namespace {
                         for (int j=jstart; j<jend; ++j)
                             for (int i=istart; i<iend; ++i) {
                                 const int ij = i + j*jj;
+                                const int ijk = i + j*jj + kstart*ijcells;  // Added this for surface level
 
                                 if (fraction[ij] < (TF)1e-12)
                                     continue;
@@ -374,6 +391,9 @@ namespace {
 
                                     // Wet vegetation case
                                     const TF rb = TF(2.0) / (ckarman * ustar[ij]) * diff_scl[0];
+
+                                    //const TF nh3_ugm3 = nh3_concentration[ijk] * pressure * xmnh3 / (R * temperature) * 1e6;
+                                    const TF nh3_ugm3 = nh3_concentration[ijk] * xmnh3 / 22.414 * 1.0e9; //mol/mol to ug/m3 conversion(STP)
 
                                     depac_wrapper(
                                             compnam,
@@ -399,7 +419,8 @@ namespace {
                                             c_ave_prev_nh3,
                                             ra[ij],
                                             rb,
-                                            catm,
+                                            nh3_ugm3,
+                                            //catm,
                                             &rc_eff,
                                             &gsoil_eff_out,
                                             &rsoil_eff_out,
@@ -413,6 +434,9 @@ namespace {
                                 else {
                                     // Wet soil case
                                     const TF rb = (TF)1.0 / (ckarman * ustar[ij]) * diff_scl[0];
+
+                                    //const TF nh3_ugm3 = nh3_concentration[ijk] * pressure * xmnh3 / (R * temperature) * 1e6;
+                                    const TF nh3_ugm3 = nh3_concentration[ijk] * xmnh3 / 22.414 * 1.0e9; //mol/mol to ug/m3 conversion(STP)
 
                                     depac_wrapper(
                                             compnam,
@@ -436,21 +460,23 @@ namespace {
                                             c_ave_prev_nh3,
                                             ra[ij],
                                             rb,
-                                            catm,
+                                            nh3_ugm3,
+                                            //catm,
                                             &rc_eff,
                                             &gsoil_eff_out,
                                             &rsoil_eff_out,
                                             pressure
                                                 );
 
-                                            if (status == STATUS_OK) {
-                                                vdnh3[ij] = (TF)1.0 / (ra[ij] + rb + rsoil_eff_out);
-                                            }
+                                    if (status == STATUS_OK) {
+                                        vdnh3[ij] = (TF)1.0 / (ra[ij] + rb + rsoil_eff_out);
+                                    }
                                 }
                             }
                     }
                 }
 }
+
 
 template<typename TF>
 Deposition<TF>::Deposition(Master& masterin, Grid<TF>& gridin, Fields<TF>& fieldsin, Input& inputin) :
@@ -609,6 +635,7 @@ template <typename TF>
 void Deposition<TF>::update_time_dependent(
         Timeloop<TF>& timeloop,
         Boundary<TF>& boundary,
+        Thermo<TF>& thermo,
         // TF* restrict vdo3,
         // TF* restrict vdno,
         // TF* restrict vdno2,
@@ -650,8 +677,9 @@ void Deposition<TF>::update_time_dependent(
                 tile.second.ra.data(),
                 tile.second.ustar.data(),
                 tile.second.fraction.data(),
-                //rmes.data(), rsoil.data(), rcut.data(),
-                //rws.data(), rwat.data(),
+                fields.sp.at("nh3")->fld.data(),  // Pass NH3 concentration directly from Fields
+                                                  //rmes.data(), rsoil.data(), rcut.data(),
+                                                  //rws.data(), rwat.data(),
                 diff_scl.data(),   
                 // Added: DEPAC parameters
                 glrad,          // Global radiation
@@ -671,7 +699,10 @@ void Deposition<TF>::update_time_dependent(
                 pressure,
                 gd.istart, gd.iend,
                 gd.jstart, gd.jend,
-                gd.icells);
+                gd.icells,
+                gd.kstart,           // Added this
+                gd.ijcells);         // added this
+
     }
 
     // Calculate tile-mean deposition for chemistry

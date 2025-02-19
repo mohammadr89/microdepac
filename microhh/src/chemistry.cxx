@@ -124,7 +124,7 @@ namespace
                         const TF lti = TF(1)/lifetime;  // 1/s
                         TF decay;
                         for (int j=jstart; j<jend; ++j)
-                        #pragma ivdep
+#pragma ivdep
                             for (int i=istart; i<iend; ++i)
                             {
                                 const int ijk = i + j*jstride + k*kstride;
@@ -485,7 +485,9 @@ void Chemistry<TF>::exec_cross(Cross<TF>& cross, unsigned long iotime)
 }
 
 template <typename TF>
-void Chemistry<TF>::update_time_dependent(Timeloop<TF>& timeloop, Boundary<TF>& boundary)
+void Chemistry<TF>::update_time_dependent(Timeloop<TF>& timeloop, Boundary<TF>& boundary, Thermo<TF>& thermo)
+
+
 {
     if (!sw_chemistry)
         return;
@@ -506,6 +508,8 @@ void Chemistry<TF>::update_time_dependent(Timeloop<TF>& timeloop, Boundary<TF>& 
     deposition->update_time_dependent(
             timeloop,
             boundary,
+            thermo,
+            //fields.sp.at("nh3")->fld.data(),  // Pass NH3 concentration
             vdnh3.data());
 }
 
@@ -529,7 +533,8 @@ void Chemistry<TF>::exec(Thermo<TF>& thermo,double sdt,double dt)
 
 
     pss<TF>(
-            fields.st.at("nh3")->fld.data(), fields.sp.at("nh3")->fld.data(),
+            fields.st.at("nh3")->fld.data(),
+            fields.sp.at("nh3")->fld.data(),
             jval, emval,
             vdnh3.data(),
             tprof.data(),
