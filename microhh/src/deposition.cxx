@@ -241,13 +241,6 @@ namespace {
             return sinphi;
         }
 
-
-
-
-
-
-
-
     template<typename TF>
         void calc_deposition_per_tile(
                 const std::string lu_type,
@@ -292,7 +285,20 @@ namespace {
                         for (int j=jstart; j<jend; ++j)
                             for (int i=istart; i<iend; ++i) {
                                 const int ij = i + j*jj;
-                                const int ijk = i + j*jj + kstart*ijcells;  // Added this for surface level
+                                const int ijk = i + j*jj + kstart*ijcells;
+                                std::cout << "Grid points: i=" << i << ", j=" << j
+                                    << ", kstart=" << kstart
+                                    << ", ijk=" << ijk
+                                    << ", NH3=" << nh3_concentration[ijk]
+                                    << ", T=" << temperature
+                                    << ", RH=" << rh << std::endl;
+
+
+                                //std::cout << "VEG tile: i=" << i << ", j=" << j << ", ijk=" << ijk << std::endl;
+                                //std::cout << "  NH3 conc = " << nh3_concentration[ijk]
+                                //    << ", glrad = " << glrad
+                                //    << ", rh = " << rh
+                                //    << ", sinphi = " << sinphi << std::endl;
 
                                 if (fraction[ij] < (TF)1e-12)
                                     continue;
@@ -320,6 +326,8 @@ namespace {
                                 float rc_tot, ccomp_tot, rc_eff;
                                 float gsoil_eff_out, rsoil_eff_out;
                                 int status;
+
+
 
                                 depac_wrapper(
                                         compnam,
@@ -366,6 +374,13 @@ namespace {
                                 const int ij = i + j*jj;
                                 const int ijk = i + j*jj + kstart*ijcells;  // Added this for surface level
 
+
+                                //std::cout << "VEG tile: i=" << i << ", j=" << j << ", ijk=" << ijk << std::endl;
+                                //std::cout << "  NH3 conc = " << nh3_concentration[ijk]
+                                //    << ", glrad = " << glrad
+                                //    << ", rh = " << rh
+                                //    << ", sinphi = " << sinphi << std::endl;
+
                                 if (fraction[ij] < (TF)1e-12)
                                     continue;
 
@@ -380,6 +395,7 @@ namespace {
                                 float rc_tot, ccomp_tot, rc_eff;
                                 float gsoil_eff_out, rsoil_eff_out;
                                 int status;
+
 
                                 depac_wrapper(
                                         compnam,
@@ -423,6 +439,13 @@ namespace {
                                 const int ij = i + j*jj;
                                 const int ijk = i + j*jj + kstart*ijcells;  // Added this for surface level
 
+
+                                // std::cout << "VEG tile: i=" << i << ", j=" << j << ", ijk=" << ijk << std::endl;
+                                // std::cout << "  NH3 conc = " << nh3_concentration[ijk]
+                                //     << ", glrad = " << glrad
+                                //     << ", rh = " << rh
+                                //     << ", sinphi = " << sinphi << std::endl;
+
                                 if (fraction[ij] < (TF)1e-12)
                                     continue;
 
@@ -448,6 +471,7 @@ namespace {
 
                                     //const TF nh3_ugm3 = nh3_concentration[ijk] * pressure * xmnh3 / (R * temperature) * 1e9;
                                     const TF nh3_ugm3 = nh3_concentration[ijk] * xmnh3 / 22.414 * 1.0e9; //mol/mol to ug/m3 conversion(STP)
+
 
                                     depac_wrapper(
                                             compnam,
@@ -491,6 +515,7 @@ namespace {
 
                                     //const TF nh3_ugm3 = nh3_concentration[ijk] * pressure * xmnh3 / (R * temperature) * 1e9;
                                     const TF nh3_ugm3 = nh3_concentration[ijk] * xmnh3 / 22.414 * 1.0e9; //mol/mol to ug/m3 conversion(STP)
+
 
                                     depac_wrapper(
                                             compnam,
@@ -550,19 +575,19 @@ Deposition<TF>::Deposition(Master& masterin, Grid<TF>& gridin, Fields<TF>& field
     max_rad = TF(600.0);           // Maximum radiation 600 W/m2
     glrad = TF(0.0);               // Initial value
 
-    master.print_message("Radiation parameters initialized:\n");
-    master.print_message("  start_hour = %f\n", start_hour);
-    master.print_message("  t0 = %f s\n", t0);
-    master.print_message("  td = %f s\n", td);
-    master.print_message("  max_rad = %f W/m2\n", max_rad);
+    //master.print_message("Radiation parameters initialized:\n");
+    //master.print_message("  start_hour = %f\n", start_hour);
+    //master.print_message("  t0 = %f s\n", t0);
+    //master.print_message("  td = %f s\n", td);
+    //master.print_message("  max_rad = %f W/m2\n", max_rad);
 
     // Radiation parameters
     //glrad = inputin.get_item<TF>("deposition", "glrad", "", (TF)400.0);                // Global radiation (W/m2)
     sinphi = inputin.get_item<TF>("deposition", "sinphi", "", (TF)0.75);               // Sine of solar elevation:  Solar elevation angle at noon ≈ 48.5° ==>  sinphi = sin(48.5°) ≈ 0.75
 
     // Meteorological parameters
-    temperature = inputin.get_item<TF>("deposition", "temperature", "", (TF)283.15);  // Air temperature (K)
-    rh = inputin.get_item<TF>("deposition", "rh", "", (TF)30.0);                      // Relative humidity (%)
+    temperature = inputin.get_item<TF>("deposition", "temperature", "", (TF)293.15);  // Air temperature (K)
+    rh = inputin.get_item<TF>("deposition", "rh", "", (TF)50.0);                      // Relative humidity (%)
 
     // Surface parameters
     sai = inputin.get_item<TF>("deposition", "sai", "", (TF)6.0);                     // Stem area index (m2/m2)
@@ -578,8 +603,7 @@ Deposition<TF>::Deposition(Master& masterin, Grid<TF>& gridin, Fields<TF>& field
     hlaw = inputin.get_item<TF>("deposition", "hlaw", "", (TF)6.1e4);                 //rmes = 1/(henry/3000.+100.*react)  ! Wesely '89, eq. 6
     react = inputin.get_item<TF>("deposition", "react", "", (TF)0.0);                 // Reactivity factor
     c_ave_prev_nh3 = inputin.get_item<TF>("deposition", "c_ave_prev_nh3", "", (TF)5.0); // Previous NH3 concentration (μg/m3)
-                                                                                        //c_ave_prev_nh3 = inputin.get_item<TF>("deposition", "c_ave_prev_nh3", "", (TF)0.0);
-                                                                                        //catm = inputin.get_item<TF>("deposition", "catm", "", (TF)0.76);                  // Atmospheric NH3 concentration (μg/m3) (0.76 μg/m3 ~ 1 ppb)
+    catm = inputin.get_item<TF>("deposition", "catm", "", (TF)0.76);                  // Atmospheric NH3 concentration (μg/m3) (0.76 μg/m3 ~ 1 ppb)
     pressure = inputin.get_item<TF>("deposition", "pressure", "", (TF)1.013e5);  // Default sea level pressure
 
 }
@@ -743,7 +767,7 @@ void Deposition<TF>::update_time_dependent(
     // Calculate current hour and sinphi
     const TF current_hour = t0/3600.0 + (model_time / 3600.0);  // Convert t0 and model_time from seconds to hours
     sinphi = calculate_sinphi(day_of_year, lat, current_hour);
-    
+
     //// Additional debug print for final values
     //std::cout << "\n=== Final Values for DEPAC ===" << std::endl;
     //std::cout << "Current hour: " << current_hour << std::endl;
@@ -752,22 +776,38 @@ void Deposition<TF>::update_time_dependent(
     //std::cout << "============================\n" << std::endl;
 
 
-    // Get RH from thermo and convert to %
-    auto tmp1 = fields.get_tmp();
-    thermo.get_thermo_field(*tmp1, "rh", true, false);
-    rh = tmp1->fld.data()[0] * 100.0;
-    fields.release_tmp(tmp1);
+    ///  // Get RH from thermo and convert to %
+    ///  auto tmp1 = fields.get_tmp();
+    ///  thermo.get_thermo_field(*tmp1, "rh", true, false);
+    ///  rh = tmp1->fld.data()[0] * 100.0;
+    ///  fields.release_tmp(tmp1);
 
-    // Get temperature from thermo and convert to Celsius
-    auto tmp2 = fields.get_tmp();
+    ///  // Get temperature from thermo and convert to Celsius
+    ///  auto tmp2 = fields.get_tmp();
+    ///  thermo.get_thermo_field(*tmp2, "T", true, false);
+    ///  temperature = tmp2->fld.data()[0];
+    ///  fields.release_tmp(tmp2);
+
+    ///  //// debug prints
+    ///  //std::cout << "Temperature from MicroHH (K): " << temperature << std::endl;
+    ///  //std::cout << "Temperature passed to DEPAC (C): " << temperature << std::endl;
+
+
+auto tmp2 = fields.get_tmp();
+if (tmp2 && tmp2->fld.data()) {
     thermo.get_thermo_field(*tmp2, "T", true, false);
-    temperature = tmp2->fld.data()[0];
+    // Get temperature at proper surface level
+    temperature = tmp2->fld.data()[gd.kstart*gd.ijcells];
     fields.release_tmp(tmp2);
+}
 
-    //// debug prints
-    //std::cout << "Temperature from MicroHH (K): " << temperature << std::endl;
-    //std::cout << "Temperature passed to DEPAC (C): " << temperature << std::endl;
-
+auto tmp1 = fields.get_tmp();
+if (tmp1 && tmp1->fld.data()) {
+    thermo.get_thermo_field(*tmp1, "rh", true, false);
+    // Get RH at proper surface level
+    rh = tmp1->fld.data()[gd.kstart*gd.ijcells] * 100.0;
+    fields.release_tmp(tmp1);
+}
 
     // get information from lsm:
     auto& tiles = boundary.get_tiles();
