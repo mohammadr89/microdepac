@@ -286,12 +286,15 @@ namespace {
                             for (int i=istart; i<iend; ++i) {
                                 const int ij = i + j*jj;
                                 const int ijk = i + j*jj + kstart*ijcells;
-                                std::cout << "Grid points: i=" << i << ", j=" << j
-                                    << ", kstart=" << kstart
-                                    << ", ijk=" << ijk
-                                    << ", NH3=" << nh3_concentration[ijk]
-                                    << ", T=" << temperature
-                                    << ", RH=" << rh << std::endl;
+
+
+                                // debug print for temperature, RH and NH3 concentration passed to depac
+                                //std::cout << "Grid points: i=" << i << ", j=" << j
+                                //    << ", kstart=" << kstart
+                                //    << ", ijk=" << ijk
+                                //    << ", NH3=" << nh3_concentration[ijk]
+                                //    << ", T=" << temperature
+                                //    << ", RH=" << rh << std::endl;
 
 
                                 //std::cout << "VEG tile: i=" << i << ", j=" << j << ", ijk=" << ijk << std::endl;
@@ -326,8 +329,6 @@ namespace {
                                 float rc_tot, ccomp_tot, rc_eff;
                                 float gsoil_eff_out, rsoil_eff_out;
                                 int status;
-
-
 
                                 depac_wrapper(
                                         compnam,
@@ -596,7 +597,7 @@ Deposition<TF>::Deposition(Master& masterin, Grid<TF>& gridin, Fields<TF>& field
     // Time and surface condition parameters
     day_of_year = inputin.get_item<int>("deposition", "day_of_year", "", 217);        // Day of year: 18 August
     nwet = inputin.get_item<int>("deposition", "nwet", "", 0);                        // Surface wetness indicator
-    lu = inputin.get_item<int>("deposition", "lu", "", 5);                            // Land use type
+    //lu = inputin.get_item<int>("deposition", "lu", "", 5);                            // Land use type
 
     // NH3-specific parameters
     iratns = inputin.get_item<int>("deposition", "iratns", "", 2);                    // NH3 compensation point option
@@ -814,7 +815,7 @@ if (tmp1 && tmp1->fld.data()) {
     auto& lai = boundary.get_lai();
     auto& water_mask = boundary.get_water_mask();
     auto& c_veg = boundary.get_c_veg();
-    //auto& sw_flux_dn = radiation.get_c_veg(); //how to call a variable from a remote scheme
+    //auto& sw_flux_dn = radiation.get_c_veg(); //how to call a variable from a remote scheme (maarten)
 
     // calculate deposition per tile:
     for (auto& tile : tiles)
@@ -893,8 +894,6 @@ if (tmp1 && tmp1->fld.data()) {
     // spatial_avg_vd(vdhcho);
     // spatial_avg_vd(vdnh3);  // Added NH3
 }
-
-
 
 template<typename TF>
 void Deposition<TF>::exec_cross(Cross<TF>& cross, unsigned long iotime)
