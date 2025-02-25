@@ -24,6 +24,9 @@ struct Deposition_tile
     std::string long_name;    // Descriptive name of tile
                               // Land surface
     std::vector<TF> vdnh3;    // Deposition velocity of NH3 (m s-1)
+    std::vector<TF> ra;
+    std::vector<TF> obuk;
+    std::vector<TF> ustar;
 };
 
 template<typename TF>

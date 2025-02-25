@@ -70,6 +70,7 @@
 #include "boundary_surface_lsm.h"
 #include "boundary.h"
 #include "cross.h"
+#include "chemistry.h"
 
 
 // Added: C linkage for DEPAC Fortran wrapper
@@ -254,6 +255,7 @@ namespace {
                 const TF* const restrict fraction, // Tile fraction
                 const TF* const restrict nh3_concentration, 
                 const TF* const restrict diff_scl, // Diffusion scaling factors
+                const TF* const restrict rhoref,
                 const TF glrad,          // Global radiation
                 const TF sinphi,         // Solar elevation angle
                 const TF temperature,    // Temperature [K]
@@ -278,7 +280,12 @@ namespace {
                     const TF ckarman = 0.4;  // von Karman constant
                     const int STATUS_OK = 0;  // Status code for successful DEPAC calls
                     const TF xmnh3 = 17.031;  // Molar mass of NH3 [g/mol]
-                    const TF R = 8.31446;     // Gas constant [J/mol/K]
+                    const TF xmair = 28.9647;       // Molar mass of dry air  [kg kmol-1]
+                    const TF xmair_i = TF(1) / xmair;
+                    const TF c_ug = TF(1.0e9) * rhoref[kstart] * xmnh3 * xmair_i;   // mol/mol to ug/m3
+
+                    // Define component name outside the loops (doesn't change)
+                    char compnam[4] = "NH3";
 
                     if (lu_type == "veg") {
                         // Vegetation tile handling
@@ -286,16 +293,6 @@ namespace {
                             for (int i=istart; i<iend; ++i) {
                                 const int ij = i + j*jj;
                                 const int ijk = i + j*jj + kstart*ijcells;
-
-
-                                // debug print for temperature, RH and NH3 concentration passed to depac
-                                //std::cout << "Grid points: i=" << i << ", j=" << j
-                                //    << ", kstart=" << kstart
-                                //    << ", ijk=" << ijk
-                                //    << ", NH3=" << nh3_concentration[ijk]
-                                //    << ", T=" << temperature
-                                //    << ", RH=" << rh << std::endl;
-
 
                                 //std::cout << "VEG tile: i=" << i << ", j=" << j << ", ijk=" << ijk << std::endl;
                                 //std::cout << "  NH3 conc = " << nh3_concentration[ijk]
@@ -320,12 +317,24 @@ namespace {
                                 // Keep IFS Ra and use vegetation Rb scaling
                                 const TF rb = TF(2.0) / (ckarman * ustar[ij]) * diff_scl[0];
 
-                                //const TF nh3_ugm3 = nh3_concentration[ijk] * pressure * xmnh3 / (R * temperature) * 1e9;
-                                const TF nh3_ugm3 = nh3_concentration[ijk] * xmnh3 / 22.414 * 1.0e9; //mol/mol to ug/m3 conversion(STP)
+                                //const TF nh3_ugm3 = nh3_concentration[ijk] * xmnh3 / 22.414 * 1.0e9; //mol/mol to ug/m3 conversion(STP)
+                                const TF nh3_ugm3 = nh3_concentration[ijk] * c_ug; // mol/mol to ug/m3 conversion
 
+
+                                // debug print for temperature, RH and NH3 concentration passed to depac
+                                //std::cout << "Grid points: i=" << i << ", j=" << j
+                                //    << ", kstart=" << kstart
+                                //    << ", ijk=" << ijk
+                                //    << ", NH3=" << nh3_ugm3
+                                //    << ", T=" << temperature
+                                //    << ", RH=" << rh << std::endl;
+                                std::cout << ", kstart=" << kstart
+                                    << ", NH3=" << nh3_ugm3
+                                    << ", T=" << temperature-273.15
+                                    << ", RH=" << rh << std::endl;
 
                                 // Call DEPAC wrapper for dry vegetation
-                                char compnam[4] = "NH3";
+                                //char compnam[4] = "NH3";
                                 float rc_tot, ccomp_tot, rc_eff;
                                 float gsoil_eff_out, rsoil_eff_out;
                                 int status;
@@ -334,7 +343,7 @@ namespace {
                                         compnam,
                                         day_of_year,
                                         lat,
-                                        temperature,
+                                        temperature -273.15,
                                         ustar[ij],
                                         glrad,
                                         sinphi,
@@ -388,11 +397,11 @@ namespace {
                                 // Use soil Rb scaling
                                 const TF rb = (TF)1.0 / (ckarman * ustar[ij]) * diff_scl[0];
 
-                                //const TF nh3_ugm3 = nh3_concentration[ijk] * pressure * xmnh3 / (R * temperature) * 1e9;
-                                const TF nh3_ugm3 = nh3_concentration[ijk] * xmnh3 / 22.414 * 1.0e9; //mol/mol to ug/m3 conversion(STP)
+                                //const TF nh3_ugm3 = nh3_concentration[ijk] * xmnh3 / 22.414 * 1.0e9; // mol/mol to ug/m3 conversion(STP)
+                                const TF nh3_ugm3 = nh3_concentration[ijk] * c_ug; // mol/mol to ug/m3 conversion
 
                                 // Call DEPAC wrapper for dry soil
-                                char compnam[4] = "NH3";
+                                //char compnam[4] = "NH3";
                                 float rc_tot, ccomp_tot, rc_eff;
                                 float gsoil_eff_out, rsoil_eff_out;
                                 int status;
@@ -402,7 +411,7 @@ namespace {
                                         compnam,
                                         day_of_year,
                                         lat,
-                                        temperature,
+                                        temperature -273.15,
                                         ustar[ij],
                                         glrad,
                                         sinphi,
@@ -440,6 +449,7 @@ namespace {
                                 const int ij = i + j*jj;
                                 const int ijk = i + j*jj + kstart*ijcells;  // Added this for surface level
 
+                                const TF nh3_ugm3 = nh3_concentration[ijk] * c_ug; // mol/mol to ug/m3 conversion
 
                                 // std::cout << "VEG tile: i=" << i << ", j=" << j << ", ijk=" << ijk << std::endl;
                                 // std::cout << "  NH3 conc = " << nh3_concentration[ijk]
@@ -450,7 +460,7 @@ namespace {
                                 if (fraction[ij] < (TF)1e-12)
                                     continue;
 
-                                char compnam[4] = "NH3";
+                                //char compnam[4] = "NH3";
                                 float rc_tot, ccomp_tot, rc_eff;
                                 float gsoil_eff_out, rsoil_eff_out;
                                 int status;
@@ -470,15 +480,15 @@ namespace {
                                     // Wet vegetation case
                                     const TF rb = TF(2.0) / (ckarman * ustar[ij]) * diff_scl[0];
 
-                                    //const TF nh3_ugm3 = nh3_concentration[ijk] * pressure * xmnh3 / (R * temperature) * 1e9;
-                                    const TF nh3_ugm3 = nh3_concentration[ijk] * xmnh3 / 22.414 * 1.0e9; //mol/mol to ug/m3 conversion(STP)
+                                    //const TF nh3_ugm3 = nh3_concentration[ijk] * xmnh3 / 22.414 * 1.0e9; // mol/mol to ug/m3 conversion(STP)
+                                    //const TF nh3_ugm3 = nh3_concentration[ijk] * c_ug; // mol/mol to ug/m3 conversion
 
 
                                     depac_wrapper(
                                             compnam,
                                             day_of_year,
                                             lat,
-                                            temperature,
+                                            temperature -273.15,
                                             ustar[ij],
                                             glrad,
                                             sinphi,
@@ -514,15 +524,15 @@ namespace {
                                     // Wet soil case
                                     const TF rb = (TF)1.0 / (ckarman * ustar[ij]) * diff_scl[0];
 
-                                    //const TF nh3_ugm3 = nh3_concentration[ijk] * pressure * xmnh3 / (R * temperature) * 1e9;
-                                    const TF nh3_ugm3 = nh3_concentration[ijk] * xmnh3 / 22.414 * 1.0e9; //mol/mol to ug/m3 conversion(STP)
+                                    //const TF nh3_ugm3 = nh3_concentration[ijk] * xmnh3 / 22.414 * 1.0e9; //mol/mol to ug/m3 conversion(STP)
+                                    //const TF nh3_ugm3 = nh3_concentration[ijk] * c_ug; // mol/mol to ug/m3 conversion
 
 
                                     depac_wrapper(
                                             compnam,
                                             day_of_year,
                                             lat,
-                                            temperature,
+                                            temperature -273.15,
                                             ustar[ij],
                                             glrad,
                                             sinphi,
@@ -595,16 +605,17 @@ Deposition<TF>::Deposition(Master& masterin, Grid<TF>& gridin, Fields<TF>& field
     lat = inputin.get_item<TF>("deposition", "lat", "", (TF)51.0);                    // Latitude (degrees)
 
     // Time and surface condition parameters
-    day_of_year = inputin.get_item<int>("deposition", "day_of_year", "", 217);        // Day of year: 18 August
+    //day_of_year = inputin.get_item<int>("deposition", "day_of_year", "", 217);        // Day of year: 18 August
+    day_of_year = inputin.get_item<int>("deposition", "day_of_year", "", 34);        // Day of year: 3 Feb
     nwet = inputin.get_item<int>("deposition", "nwet", "", 0);                        // Surface wetness indicator
-    //lu = inputin.get_item<int>("deposition", "lu", "", 5);                            // Land use type
+                                                                                      //lu = inputin.get_item<int>("deposition", "lu", "", 5);                            // Land use type
 
-    // NH3-specific parameters
+                                                                                      // NH3-specific parameters
     iratns = inputin.get_item<int>("deposition", "iratns", "", 2);                    // NH3 compensation point option
     hlaw = inputin.get_item<TF>("deposition", "hlaw", "", (TF)6.1e4);                 //rmes = 1/(henry/3000.+100.*react)  ! Wesely '89, eq. 6
     react = inputin.get_item<TF>("deposition", "react", "", (TF)0.0);                 // Reactivity factor
-    c_ave_prev_nh3 = inputin.get_item<TF>("deposition", "c_ave_prev_nh3", "", (TF)5.0); // Previous NH3 concentration (μg/m3)
-    //catm = inputin.get_item<TF>("deposition", "catm", "", (TF)0.76);                  // Atmospheric NH3 concentration (μg/m3) (0.76 μg/m3 ~ 1 ppb)
+    c_ave_prev_nh3 = inputin.get_item<TF>("deposition", "c_ave_prev_nh3", "", (TF)0.0); // Previous NH3 concentration (μg/m3)
+                                                                                        //catm = inputin.get_item<TF>("deposition", "catm", "", (TF)0.76);                  // Atmospheric NH3 concentration (μg/m3) (0.76 μg/m3 ~ 1 ppb)
     pressure = inputin.get_item<TF>("deposition", "pressure", "", (TF)1.013e5);  // Default sea level pressure
 
 }
@@ -648,7 +659,10 @@ void Deposition<TF>::init(Input& inputin)
         // tile.second.vdh2o2.resize(gd.ijcells);
         // tile.second.vdrooh.resize(gd.ijcells);
         // tile.second.vdhcho.resize(gd.ijcells);
-        tile.second.vdnh3.resize(gd.ijcells);  // Added NH3
+        tile.second.vdnh3.resize(gd.ijcells);  // allocate memory for arrays
+        tile.second.ra.resize(gd.ijcells);
+        tile.second.obuk.resize(gd.ijcells);
+        tile.second.ustar.resize(gd.ijcells);
     }
 
     deposition_tiles.at("veg" ).long_name = "vegetation";
@@ -722,7 +736,10 @@ void Deposition<TF>::create(Stats<TF>& stats, Cross<TF>& cross)
             // "vdo3_soil", "vdno_soil", "vdno2_soil", "vdhno3_soil", "vdh2o2_soil", "vdrooh_soil", "vdhcho_soil",
             // "vdo3_wet", "vdno_wet", "vdno2_wet", "vdhno3_wet", "vdh2o2_wet", "vdrooh_wet", "vdhcho_wet",
             // "vdo3_veg", "vdno_veg", "vdno2_veg", "vdhno3_veg", "vdh2o2_veg", "vdrooh_veg", "vdhcho_veg"
-            "vdnh3_soil", "vdnh3_wet", "vdnh3_veg"};  // Modified for NH3 only
+            "vdnh3_soil", "vdnh3_wet", "vdnh3_veg",
+            "ra_soil", "ra_wet", "ra_veg",
+            "obuk_soil", "obuk_wet", "obuk_veg",
+            "ustar_soil", "ustar_wet", "ustar_veg"};  // Modified for NH3 only
         cross_list = cross.get_enabled_variables(allowed_crossvars);
     }
 }
@@ -794,21 +811,21 @@ void Deposition<TF>::update_time_dependent(
     ///  //std::cout << "Temperature passed to DEPAC (C): " << temperature << std::endl;
 
 
-auto tmp2 = fields.get_tmp();
-if (tmp2 && tmp2->fld.data()) {
-    thermo.get_thermo_field(*tmp2, "T", true, false);
-    // Get temperature at proper surface level
-    temperature = tmp2->fld.data()[gd.kstart*gd.ijcells];
-    fields.release_tmp(tmp2);
-}
+    auto tmp2 = fields.get_tmp();
+    if (tmp2 && tmp2->fld.data()) {
+        thermo.get_thermo_field(*tmp2, "T", true, false);
+        // Get temperature at proper surface level
+        temperature = tmp2->fld.data()[gd.kstart*gd.ijcells];
+        fields.release_tmp(tmp2);
+    }
 
-auto tmp1 = fields.get_tmp();
-if (tmp1 && tmp1->fld.data()) {
-    thermo.get_thermo_field(*tmp1, "rh", true, false);
-    // Get RH at proper surface level
-    rh = tmp1->fld.data()[gd.kstart*gd.ijcells] * 100.0;
-    fields.release_tmp(tmp1);
-}
+    auto tmp1 = fields.get_tmp();
+    if (tmp1 && tmp1->fld.data()) {
+        thermo.get_thermo_field(*tmp1, "rh", true, false);
+        // Get RH at proper surface level
+        rh = tmp1->fld.data()[gd.kstart*gd.ijcells] * 100.0;
+        fields.release_tmp(tmp1);
+    }
 
     // get information from lsm:
     auto& tiles = boundary.get_tiles();
@@ -816,6 +833,20 @@ if (tmp1 && tmp1->fld.data()) {
     auto& water_mask = boundary.get_water_mask();
     auto& c_veg = boundary.get_c_veg();
     //auto& sw_flux_dn = radiation.get_c_veg(); //how to call a variable from a remote scheme (maarten)
+
+    // Copy values from boundary tiles to deposition tiles
+    for (const auto& tile_name : deposition_tile_names)
+    {
+        if (tiles.count(tile_name) > 0 && deposition_tiles.count(tile_name) > 0)
+        {
+            const auto& boundary_tile = tiles.at(tile_name);
+            auto& dep_tile = deposition_tiles.at(tile_name);
+
+            std::copy(boundary_tile.ra.begin(), boundary_tile.ra.end(), dep_tile.ra.begin());
+            std::copy(boundary_tile.obuk.begin(), boundary_tile.obuk.end(), dep_tile.obuk.begin());
+            std::copy(boundary_tile.ustar.begin(), boundary_tile.ustar.end(), dep_tile.ustar.begin());
+        }
+    }
 
     // calculate deposition per tile:
     for (auto& tile : tiles)
@@ -841,6 +872,7 @@ if (tmp1 && tmp1->fld.data()) {
                                                   //rmes.data(), rsoil.data(), rcut.data(),
                                                   //rws.data(), rwat.data(),
                 diff_scl.data(),   
+                fields.rhoref.data(),
                 // Added: DEPAC parameters
                 glrad,          // Now using calculated time-dependent radiation
                 sinphi,         // Sine of solar elevation
@@ -955,6 +987,24 @@ void Deposition<TF>::exec_cross(Cross<TF>& cross, unsigned long iotime)
             cross.cross_plane(deposition_tiles.at("soil").vdnh3.data(), no_offset, name, iotime);
         else if (name == "vdnh3_wet")
             cross.cross_plane(deposition_tiles.at("wet").vdnh3.data(), no_offset, name, iotime);
+        else if (name == "ra_veg")
+            cross.cross_plane(deposition_tiles.at("veg").ra.data(), no_offset, name, iotime);
+        else if (name == "ra_soil")
+            cross.cross_plane(deposition_tiles.at("soil").ra.data(), no_offset, name, iotime);
+        else if (name == "ra_wet")
+            cross.cross_plane(deposition_tiles.at("wet").ra.data(), no_offset, name, iotime);
+        else if (name == "obuk_veg")
+            cross.cross_plane(deposition_tiles.at("veg").obuk.data(), no_offset, name, iotime);
+        else if (name == "obuk_soil")
+            cross.cross_plane(deposition_tiles.at("soil").obuk.data(), no_offset, name, iotime);
+        else if (name == "obuk_wet")
+            cross.cross_plane(deposition_tiles.at("wet").obuk.data(), no_offset, name, iotime);
+        else if (name == "ustar_veg")
+            cross.cross_plane(deposition_tiles.at("veg").ustar.data(), no_offset, name, iotime);
+        else if (name == "ustar_soil")
+            cross.cross_plane(deposition_tiles.at("soil").ustar.data(), no_offset, name, iotime);
+        else if (name == "ustar_wet")
+            cross.cross_plane(deposition_tiles.at("wet").ustar.data(), no_offset, name, iotime);
     }
 }
 
