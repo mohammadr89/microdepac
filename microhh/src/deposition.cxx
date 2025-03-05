@@ -599,8 +599,8 @@ Deposition<TF>::Deposition(Master& masterin, Grid<TF>& gridin, Fields<TF>& field
 
 
     // Get start hour from input
-    TF start_hour = inputin.get_item<TF>("deposition", "start_hour", "", TF(7.0));  // Default 7:00
-    //TF start_hour = inputin.get_item<TF>("", "start_hour", "");
+    //TF start_hour = inputin.get_item<TF>("deposition", "start_hour", "", TF(0.0)); 
+    TF start_hour = inputin.get_item<TF>("deposition", "start_hour", "");
     master.print_message("Successfully loaded start_hour = %f from input file\n", start_hour);
 
     // Initialize radiation parameters
