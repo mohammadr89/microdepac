@@ -606,7 +606,11 @@ Deposition<TF>::Deposition(Master& masterin, Grid<TF>& gridin, Fields<TF>& field
     // Initialize radiation parameters
     t0 = start_hour * 3600;        // Convert start hour to seconds (e.g., 7:00 = 25200s)
     td = TF(12*3600);              // 12 hour day length
-    max_rad = TF(400.0);           // Maximum radiation 600 W/m2
+    //max_rad = TF(400.0);           
+    // Get max_rad from radiation section instead of hardcoding
+    max_rad = inputin.get_item<TF>("radiation", "max_rad", ""); 
+    master.print_message("Using max_rad = %f W/m2 from radiation section\n", max_rad);
+
     glrad = TF(0.0);               // Initial value
 
     //master.print_message("Radiation parameters initialized:\n");
