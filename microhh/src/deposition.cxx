@@ -51,26 +51,27 @@
 
 
 //#include <cstdio>
-#include <cstdio>
-#include <iostream>
-#include <sstream>
-#include <algorithm>
-#include <math.h>
-#include <iomanip>
-#include <utility>
-#include "master.h"
-#include "grid.h"
-#include "fields.h"
-#include "thermo.h"
-#include "stats.h"
-#include "netcdf_interface.h"
-#include "constants.h"
-#include "timeloop.h"
-#include "deposition.h"
-#include "boundary_surface_lsm.h"
 #include "boundary.h"
-#include "cross.h"
+#include "boundary_surface_lsm.h"
 #include "chemistry.h"
+#include "constants.h"
+#include "cross.h"
+#include "deposition.h"
+#include "fields.h"
+#include "grid.h"
+#include "master.h"
+#include "netcdf_interface.h"
+#include "radiation.h"
+#include "stats.h"
+#include "thermo.h"
+#include "timeloop.h"
+#include <algorithm>
+#include <cstdio>
+#include <iomanip>
+#include <iostream>
+#include <math.h>
+#include <sstream>
+#include <utility>
 
 
 // Added: C linkage for DEPAC Fortran wrapper
@@ -244,6 +245,7 @@ namespace {
 
     template<typename TF>
         void calc_deposition_per_tile(
+                Master& master,           // Add Master reference as parameter
                 const std::string lu_type,
                 TF* restrict vdnh3,              // Output: NH3 deposition velocity
                 const TF* const restrict lai,     // Leaf Area Index
@@ -255,7 +257,7 @@ namespace {
                 const TF* const restrict fraction, // Tile fraction
                 const TF* const restrict nh3_concentration, 
                 const TF* const restrict diff_scl, // Diffusion scaling factors
-                const TF* const restrict rhoref,
+                const TF* const restrict rho,  
                 const TF glrad,          // Global radiation
                 const TF sinphi,         // Solar elevation angle
                 const TF temperature,    // Temperature [K]
@@ -282,7 +284,9 @@ namespace {
                     const TF xmnh3 = 17.031;  // Molar mass of NH3 [g/mol]
                     const TF xmair = 28.9647;       // Molar mass of dry air  [kg kmol-1]
                     const TF xmair_i = TF(1) / xmair;
-                    const TF c_ug = TF(1.0e9) * rhoref[kstart] * xmnh3 * xmair_i;   // mol/mol to ug/m3
+                    //const TF c_ug = TF(1.0e9) * rhoref[kstart] * xmnh3 * xmair_i;   // mol/mol to ug/m3
+                    const TF c_ug = TF(1.0e9) * rho[kstart] * xmnh3 * xmair_i;   // mol/mol to ug/m3
+
 
                     // Define component name outside the loops (doesn't change)
                     char compnam[4] = "NH3";
@@ -293,6 +297,13 @@ namespace {
                             for (int i=istart; i<iend; ++i) {
                                 const int ij = i + j*jj;
                                 const int ijk = i + j*jj + kstart*ijcells;
+
+                                //if (i == istart && j == jstart) {
+                                //    master.print_message("DEPAC call - day_of_year: %d (passing to Fortran)\n", day_of_year);
+                                //}
+
+                                //std::cout << "rho= " << rho[kstart] << std::endl;
+                                //std::cout <<" c_ave_prev_nh3 * c_ug= " <<c_ave_prev_nh3 * c_ug << std::endl;
 
                                 //std::cout << "VEG tile: i=" << i << ", j=" << j << ", ijk=" << ijk << std::endl;
                                 //std::cout << "  NH3 conc = " << nh3_concentration[ijk]
@@ -306,6 +317,7 @@ namespace {
                                 // This allows DEPAC to use different parameters for grass vs forest
                                 int local_lu;
                                 TF local_sai;
+
                                 if (lai[ij] <= 3.5) {
                                     local_lu = 1;  // grass
                                     local_sai = lai[ij];  // For grass, SAI = LAI
@@ -313,6 +325,15 @@ namespace {
                                     local_lu = 4;  // coniferous forest
                                     local_sai = lai[ij] + 1.0;  // For forest, add stem area
                                 }
+
+                                //// Calculate SAI based on the land use type
+                                //if (local_lu == 4 || local_lu == 5 || local_lu == 17 || local_lu == 18) {  // Forest types
+                                //    local_sai = lai[ij] + 1.0;
+                                //} else if (local_lu == 3) {  // Permanent crops
+                                //    local_sai = lai[ij] + 0.5;
+                                //} else {  // Default case (includes grass)
+                                //    local_sai = lai[ij];
+                                //}
 
                                 // Keep IFS Ra and use vegetation Rb scaling
                                 const TF rb = TF(2.0) / (ckarman * ustar[ij]) * diff_scl[0];
@@ -328,10 +349,10 @@ namespace {
                                 //    << ", NH3=" << nh3_ugm3
                                 //    << ", T=" << temperature
                                 //    << ", RH=" << rh << std::endl;
-                                std::cout << ", kstart=" << kstart
-                                    << ", NH3=" << nh3_ugm3
-                                    << ", T=" << temperature-273.15
-                                    << ", RH=" << rh << std::endl;
+                                //std::cout << ", kstart=" << kstart
+                                //    << ", NH3=" << nh3_ugm3
+                                //    << ", T=" << temperature-273.15
+                                //    << ", RH=" << rh << std::endl;
 
                                 // Call DEPAC wrapper for dry vegetation
                                 //char compnam[4] = "NH3";
@@ -360,7 +381,7 @@ namespace {
                                         hlaw,
                                         react,
                                         &status,
-                                        c_ave_prev_nh3,
+                                        c_ave_prev_nh3 * c_ug,
                                         ra[ij],
                                         rb,
                                         nh3_ugm3,
@@ -426,7 +447,7 @@ namespace {
                                         hlaw,
                                         react,
                                         &status,
-                                        c_ave_prev_nh3,
+                                        c_ave_prev_nh3 * c_ug,
                                         ra[ij],
                                         rb,
                                         nh3_ugm3,
@@ -505,7 +526,7 @@ namespace {
                                             hlaw,
                                             react,
                                             &status,
-                                            c_ave_prev_nh3,
+                                            c_ave_prev_nh3 * c_ug,
                                             ra[ij],
                                             rb,
                                             nh3_ugm3,
@@ -547,7 +568,7 @@ namespace {
                                             hlaw,
                                             react,
                                             &status,
-                                            c_ave_prev_nh3,
+                                            c_ave_prev_nh3 * c_ug,
                                             ra[ij],
                                             rb,
                                             nh3_ugm3,
@@ -579,11 +600,13 @@ Deposition<TF>::Deposition(Master& masterin, Grid<TF>& gridin, Fields<TF>& field
 
     // Get start hour from input
     TF start_hour = inputin.get_item<TF>("deposition", "start_hour", "", TF(7.0));  // Default 7:00
+    //TF start_hour = inputin.get_item<TF>("", "start_hour", "");
+    master.print_message("Successfully loaded start_hour = %f from input file\n", start_hour);
 
     // Initialize radiation parameters
     t0 = start_hour * 3600;        // Convert start hour to seconds (e.g., 7:00 = 25200s)
     td = TF(12*3600);              // 12 hour day length
-    max_rad = TF(600.0);           // Maximum radiation 600 W/m2
+    max_rad = TF(400.0);           // Maximum radiation 600 W/m2
     glrad = TF(0.0);               // Initial value
 
     //master.print_message("Radiation parameters initialized:\n");
@@ -602,11 +625,10 @@ Deposition<TF>::Deposition(Master& masterin, Grid<TF>& gridin, Fields<TF>& field
 
     // Surface parameters
     //sai = inputin.get_item<TF>("deposition", "sai", "", (TF)6.0);                     // Stem area index (m2/m2)
-    lat = inputin.get_item<TF>("deposition", "lat", "", (TF)51.0);                    // Latitude (degrees)
+    //lat = inputin.get_item<TF>("deposition", "lat", "", (TF)52.3);                    // Latitude (degrees)
 
     // Time and surface condition parameters
-    //day_of_year = inputin.get_item<int>("deposition", "day_of_year", "", 217);        // Day of year: 18 August
-    day_of_year = inputin.get_item<int>("deposition", "day_of_year", "", 34);        // Day of year: 3 Feb
+    //day_of_year = inputin.get_item<int>("deposition", "day_of_year", "", 264);        // Day of year: 20 September
     nwet = inputin.get_item<int>("deposition", "nwet", "", 0);                        // Surface wetness indicator
                                                                                       //lu = inputin.get_item<int>("deposition", "lu", "", 5);                            // Land use type
 
@@ -614,7 +636,7 @@ Deposition<TF>::Deposition(Master& masterin, Grid<TF>& gridin, Fields<TF>& field
     iratns = inputin.get_item<int>("deposition", "iratns", "", 2);                    // NH3 compensation point option
     hlaw = inputin.get_item<TF>("deposition", "hlaw", "", (TF)6.1e4);                 //rmes = 1/(henry/3000.+100.*react)  ! Wesely '89, eq. 6
     react = inputin.get_item<TF>("deposition", "react", "", (TF)0.0);                 // Reactivity factor
-    c_ave_prev_nh3 = inputin.get_item<TF>("deposition", "c_ave_prev_nh3", "", (TF)0.0); // Previous NH3 concentration (μg/m3)
+    c_ave_prev_nh3 = inputin.get_item<TF>("deposition", "c_ave_prev_nh3", "", (TF)6.735e-9); // Previous NH3 concentration (mol/mol, then it converts to ug/m3)
                                                                                         //catm = inputin.get_item<TF>("deposition", "catm", "", (TF)0.76);                  // Atmospheric NH3 concentration (μg/m3) (0.76 μg/m3 ~ 1 ppb)
     pressure = inputin.get_item<TF>("deposition", "pressure", "", (TF)1.013e5);  // Default sea level pressure
 
@@ -770,6 +792,7 @@ void Deposition<TF>::update_time_dependent(
     // Calculate actual time of day (t0 is 7:00 = 25200 seconds)
     const TF actual_time = t0 + model_time;
 
+    const std::vector<TF>& rho = thermo.get_basestate_vector("rho");
 
     //// Debug prints
     //master.print_message("Time components: model_time = %f, actual_time = %f, t0 = %f, td = %f, max_rad = %f\n", 
@@ -782,9 +805,28 @@ void Deposition<TF>::update_time_dependent(
     //// Debug prints
     //master.print_message("Global radiation = %f W/m2\n", glrad);
 
+    // Get day of year from Timeloop
+    day_of_year = int(timeloop.calc_day_of_year());
+
+    // Get latitude from Grid
+    lat = gd.lat;
+
     // Calculate current hour and sinphi
-    const TF current_hour = t0/3600.0 + (model_time / 3600.0);  // Convert t0 and model_time from seconds to hours
+    //const TF current_hour = t0/3600.0 + (model_time / 3600.0);  // Convert t0 and model_time from seconds to hours
+    const TF current_hour = t0/3600.0 + (timeloop.get_time() / 3600.0);  // Convert t0 and model_time from seconds to hours
     sinphi = calculate_sinphi(day_of_year, lat, current_hour);
+
+    //master.print_message("\n=== Time Calculation Debug ===\n");
+    //master.print_message("t0 value = %.2f seconds (%.2f hours)\n", t0, t0/3600.0);
+    //master.print_message("timeloop.get_time() = %.2f seconds\n", timeloop.get_time());
+    //master.print_message("current_hour calculation: %.2f + %.2f = %.2f\n",
+    //t0/3600.0, timeloop.get_time()/3600.0, current_hour);
+
+    //master.print_message("\n=== Solar Parameters Debug ===\n");
+    //master.print_message("Latitude from grid: %.6f degrees\n", lat);
+    //master.print_message("Day of year from timeloop: %d\n", day_of_year);
+    //master.print_message("Sine of solar elevation (sinphi): %.6f\n", sinphi);
+    //master.print_message("==============================\n");
 
     //// Additional debug print for final values
     //std::cout << "\n=== Final Values for DEPAC ===" << std::endl;
@@ -852,6 +894,7 @@ void Deposition<TF>::update_time_dependent(
     for (auto& tile : tiles)
     {
         calc_deposition_per_tile(
+                master,
                 tile.first,
                 // deposition_tiles.at(tile.first).vdo3.data(),
                 // deposition_tiles.at(tile.first).vdno.data(),
@@ -872,7 +915,7 @@ void Deposition<TF>::update_time_dependent(
                                                   //rmes.data(), rsoil.data(), rcut.data(),
                                                   //rws.data(), rwat.data(),
                 diff_scl.data(),   
-                fields.rhoref.data(),
+                rho.data(),
                 // Added: DEPAC parameters
                 glrad,          // Now using calculated time-dependent radiation
                 sinphi,         // Sine of solar elevation
