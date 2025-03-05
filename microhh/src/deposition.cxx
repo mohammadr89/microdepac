@@ -322,7 +322,7 @@ namespace {
                                     local_lu = 1;  // grass
                                     local_sai = lai[ij];  // For grass, SAI = LAI
                                 } else {
-                                    local_lu = 4;  // coniferous forest
+                                    local_lu = 5;  // deciduous forest
                                     local_sai = lai[ij] + 1.0;  // For forest, add stem area
                                 }
 
@@ -494,7 +494,7 @@ namespace {
                                         local_lu = 1;  // grass
                                         local_sai = lai[ij];  // For grass, SAI = LAI
                                     } else {
-                                        local_lu = 4;  // coniferous forest
+                                        local_lu = 5;  // deciduous forest
                                         local_sai = lai[ij] + 1.0;  // For forest, add stem area
                                     }
 
