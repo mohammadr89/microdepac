@@ -273,6 +273,9 @@ namespace {
                 const TF c_ave_prev_nh3, // Previous NH3 concentration
                 const TF catm,          // Atmospheric NH3 concentration
                 const TF pressure,      // Added pressure parameter
+                const bool sw_override_ccomp,        // NEW parameter
+                const TF ccomp_override_value,       // NEW parameter
+                Deposition_tile_map<TF>& deposition_tiles, // NEW parameter
                 const int istart, const int iend,
                 const int jstart, const int jend,
                 const int jj,
@@ -394,6 +397,19 @@ namespace {
 
                                         // Calculate deposition velocity using resistance analogy
                                         if (status == STATUS_OK) {
+
+                                            // Apply override if enabled
+                                            if (sw_override_ccomp) {
+                                                ccomp_tot = ccomp_override_value;
+                                            }
+
+                                            //// Debug print for all soil grid points
+                                            //master.print_message("VEG: Grid point (%d,%d), ccomp_tot = %.6f µg/m³\n",
+                                            //        i, j, ccomp_tot);
+
+                                            // Store ccomp_tot value
+                                            deposition_tiles.at(lu_type).ccomp_tot.data()[ij] = ccomp_tot;
+
                                             vdnh3[ij] = (TF)1.0 / (ra[ij] + rb + rc_eff);
                                         }
                             }
@@ -459,6 +475,19 @@ namespace {
                                             );
 
                                 if (status == STATUS_OK) {
+
+                                    // Apply override if enabled
+                                    if (sw_override_ccomp) {
+                                        ccomp_tot = ccomp_override_value;
+                                    }
+
+                                    //// Debug print for all soil grid points
+                                    //master.print_message("SOIL: Grid point (%d,%d), ccomp_tot = %.6f µg/m³\n",
+                                    //        i, j, ccomp_tot);
+
+                                    // Store ccomp_tot value
+                                    deposition_tiles.at(lu_type).ccomp_tot.data()[ij] = ccomp_tot;
+
                                     vdnh3[ij] = (TF)1.0 / (ra[ij] + rb + rsoil_eff_out);
                                 }
                             }
@@ -538,6 +567,19 @@ namespace {
                                                 );
 
                                             if (status == STATUS_OK) {
+
+                                                // Apply override if enabled
+                                                if (sw_override_ccomp) {
+                                                    ccomp_tot = ccomp_override_value;
+                                                }
+
+                                                //// Debug print for all soil grid points
+                                                //master.print_message("WET_VEG: Grid point (%d,%d), ccomp_tot = %.6f µg/m³\n",
+                                                //        i, j, ccomp_tot);
+
+                                                // Store ccomp_tot value
+                                                deposition_tiles.at(lu_type).ccomp_tot.data()[ij] = ccomp_tot;
+
                                                 vdnh3[ij] = (TF)1.0 / (ra[ij] + rb + rc_eff);
                                             }
                                 }
@@ -580,6 +622,19 @@ namespace {
                                                 );
 
                                     if (status == STATUS_OK) {
+
+                                        // Apply override if enabled
+                                        if (sw_override_ccomp) {
+                                            ccomp_tot = ccomp_override_value;
+                                        }
+
+                                        //// Debug print for all soil grid points
+                                        //master.print_message("WET_SOIL: Grid point (%d,%d), ccomp_tot = %.6f µg/m³\n",
+                                        //        i, j, ccomp_tot);
+
+                                        // Store ccomp_tot value
+                                        deposition_tiles.at(lu_type).ccomp_tot.data()[ij] = ccomp_tot;
+
                                         vdnh3[ij] = (TF)1.0 / (ra[ij] + rb + rsoil_eff_out);
                                     }
                                 }
@@ -606,8 +661,8 @@ Deposition<TF>::Deposition(Master& masterin, Grid<TF>& gridin, Fields<TF>& field
     // Initialize radiation parameters
     t0 = start_hour * 3600;        // Convert start hour to seconds (e.g., 7:00 = 25200s)
     td = TF(12*3600);              // 12 hour day length
-    //max_rad = TF(400.0);           
-    // Get max_rad from radiation section instead of hardcoding
+                                   //max_rad = TF(400.0);           
+                                   // Get max_rad from radiation section instead of hardcoding
     max_rad = inputin.get_item<TF>("radiation", "max_rad", ""); 
     master.print_message("Using max_rad = %f W/m2 from radiation section\n", max_rad);
 
@@ -641,19 +696,29 @@ Deposition<TF>::Deposition(Master& masterin, Grid<TF>& gridin, Fields<TF>& field
     hlaw = inputin.get_item<TF>("deposition", "hlaw", "", (TF)6.1e4);                 //rmes = 1/(henry/3000.+100.*react)  ! Wesely '89, eq. 6
     react = inputin.get_item<TF>("deposition", "react", "", (TF)0.0);                 // Reactivity factor
     c_ave_prev_nh3 = inputin.get_item<TF>("deposition", "c_ave_prev_nh3", "", (TF)6.735e-9); // Previous NH3 concentration (mol/mol, then it converts to ug/m3)
-                                                                                        //catm = inputin.get_item<TF>("deposition", "catm", "", (TF)0.76);                  // Atmospheric NH3 concentration (μg/m3) (0.76 μg/m3 ~ 1 ppb)
+                                                                                             //catm = inputin.get_item<TF>("deposition", "catm", "", (TF)0.76);                  // Atmospheric NH3 concentration (μg/m3) (0.76 μg/m3 ~ 1 ppb)
     pressure = inputin.get_item<TF>("deposition", "pressure", "", (TF)1.013e5);  // Default sea level pressure
+
+    sw_override_ccomp = inputin.get_item<bool>("deposition", "sw_override_ccomp", "", false);
+    ccomp_override_value = inputin.get_item<TF>("deposition", "ccomp_override_value", "", TF(0.0));
+
+    //// Debug print
+    //if (sw_override_ccomp) {
+    //    master.print_message("DEPAC: Compensation point override ENABLED. Using value: %f\n", ccomp_override_value);
+    //} else {
+    //    master.print_message("DEPAC: Compensation point override DISABLED. Using calculated values.\n");
+    //}
 
 }
 
 
-template <typename TF>
+    template <typename TF>
 Deposition<TF>::~Deposition()
 {
 }
 
 
-template <typename TF>
+    template <typename TF>
 void Deposition<TF>::init(Input& inputin)
 {
     // Always read the default deposition velocities. They are needed by 
@@ -689,7 +754,11 @@ void Deposition<TF>::init(Input& inputin)
         tile.second.ra.resize(gd.ijcells);
         tile.second.obuk.resize(gd.ijcells);
         tile.second.ustar.resize(gd.ijcells);
+        tile.second.ccomp_tot.resize(gd.ijcells);
     }
+    // Initialize grid-mean arrays
+    ra_mean.resize(gd.ijcells);
+    ccomp_mean.resize(gd.ijcells);
 
     deposition_tiles.at("veg" ).long_name = "vegetation";
     deposition_tiles.at("soil").long_name = "bare soil";
@@ -749,7 +818,7 @@ void Deposition<TF>::init(Input& inputin)
     }
 }
 
-template <typename TF>
+    template <typename TF>
 void Deposition<TF>::create(Stats<TF>& stats, Cross<TF>& cross)
 {
     if (!sw_deposition)
@@ -765,7 +834,9 @@ void Deposition<TF>::create(Stats<TF>& stats, Cross<TF>& cross)
             "vdnh3_soil", "vdnh3_wet", "vdnh3_veg",
             "ra_soil", "ra_wet", "ra_veg",
             "obuk_soil", "obuk_wet", "obuk_veg",
-            "ustar_soil", "ustar_wet", "ustar_veg"};  // Modified for NH3 only
+            "ustar_soil", "ustar_wet", "ustar_veg",
+            "ccomp_tot_soil", "ccomp_tot_wet", "ccomp_tot_veg",
+            "ra", "ccomp_tot"};  // Modified for NH3 only
         cross_list = cross.get_enabled_variables(allowed_crossvars);
     }
 }
@@ -936,6 +1007,9 @@ void Deposition<TF>::update_time_dependent(
                 c_ave_prev_nh3, // Previous NH3 concentration
                 catm,          // Atmospheric NH3 concentration
                 pressure,
+                sw_override_ccomp,              // NEW argument
+                ccomp_override_value,           // NEW argument
+                deposition_tiles,               // NEW argument
                 gd.istart, gd.iend,
                 gd.jstart, gd.jend,
                 gd.icells,
@@ -953,6 +1027,10 @@ void Deposition<TF>::update_time_dependent(
     // get_tiled_mean(vdrooh,"rooh",(TF) 1.0,tiles.at("veg").fraction.data(), tiles.at("soil").fraction.data(), tiles.at("wet").fraction.data());
     // get_tiled_mean(vdhcho,"hcho",(TF) 1.0,tiles.at("veg").fraction.data(), tiles.at("soil").fraction.data(), tiles.at("wet").fraction.data());
     get_tiled_mean(vdnh3,"nh3",(TF) 1.0,tiles.at("veg").fraction.data(), tiles.at("soil").fraction.data(), tiles.at("wet").fraction.data());  // Added NH3
+
+    get_tiled_mean(ra_mean.data(), "ra", (TF)1.0, tiles.at("veg").fraction.data(), tiles.at("soil").fraction.data(), tiles.at("wet").fraction.data());
+
+    get_tiled_mean(ccomp_mean.data(), "ccomp_tot", (TF)1.0, tiles.at("veg").fraction.data(), tiles.at("soil").fraction.data(), tiles.at("wet").fraction.data());
 
     // cmk: we use the wet-tile info for u* and ra, since these are calculated in lsm with f_wet = 100%
     // update_vd_water(vdo3,"o3",tiles.at("wet").ra.data(),tiles.at("wet").ustar.data(),water_mask.data(),diff_scl.data(),rwat.data());
@@ -974,7 +1052,7 @@ void Deposition<TF>::update_time_dependent(
     // spatial_avg_vd(vdnh3);  // Added NH3
 }
 
-template<typename TF>
+    template<typename TF>
 void Deposition<TF>::exec_cross(Cross<TF>& cross, unsigned long iotime)
 {
     if (!sw_deposition)
@@ -1034,24 +1112,34 @@ void Deposition<TF>::exec_cross(Cross<TF>& cross, unsigned long iotime)
             cross.cross_plane(deposition_tiles.at("soil").vdnh3.data(), no_offset, name, iotime);
         else if (name == "vdnh3_wet")
             cross.cross_plane(deposition_tiles.at("wet").vdnh3.data(), no_offset, name, iotime);
-        else if (name == "ra_veg")
-            cross.cross_plane(deposition_tiles.at("veg").ra.data(), no_offset, name, iotime);
-        else if (name == "ra_soil")
-            cross.cross_plane(deposition_tiles.at("soil").ra.data(), no_offset, name, iotime);
-        else if (name == "ra_wet")
-            cross.cross_plane(deposition_tiles.at("wet").ra.data(), no_offset, name, iotime);
-        else if (name == "obuk_veg")
-            cross.cross_plane(deposition_tiles.at("veg").obuk.data(), no_offset, name, iotime);
-        else if (name == "obuk_soil")
-            cross.cross_plane(deposition_tiles.at("soil").obuk.data(), no_offset, name, iotime);
-        else if (name == "obuk_wet")
-            cross.cross_plane(deposition_tiles.at("wet").obuk.data(), no_offset, name, iotime);
-        else if (name == "ustar_veg")
-            cross.cross_plane(deposition_tiles.at("veg").ustar.data(), no_offset, name, iotime);
-        else if (name == "ustar_soil")
-            cross.cross_plane(deposition_tiles.at("soil").ustar.data(), no_offset, name, iotime);
-        else if (name == "ustar_wet")
-            cross.cross_plane(deposition_tiles.at("wet").ustar.data(), no_offset, name, iotime);
+        //else if (name == "ra_veg")
+        //    cross.cross_plane(deposition_tiles.at("veg").ra.data(), no_offset, name, iotime);
+        //else if (name == "ra_soil")
+        //    cross.cross_plane(deposition_tiles.at("soil").ra.data(), no_offset, name, iotime);
+        //else if (name == "ra_wet")
+        //    cross.cross_plane(deposition_tiles.at("wet").ra.data(), no_offset, name, iotime);
+        //else if (name == "obuk_veg")
+        //    cross.cross_plane(deposition_tiles.at("veg").obuk.data(), no_offset, name, iotime);
+        //else if (name == "obuk_soil")
+        //    cross.cross_plane(deposition_tiles.at("soil").obuk.data(), no_offset, name, iotime);
+        //else if (name == "obuk_wet")
+        //    cross.cross_plane(deposition_tiles.at("wet").obuk.data(), no_offset, name, iotime);
+        //else if (name == "ustar_veg")
+        //    cross.cross_plane(deposition_tiles.at("veg").ustar.data(), no_offset, name, iotime);
+        //else if (name == "ustar_soil")
+        //    cross.cross_plane(deposition_tiles.at("soil").ustar.data(), no_offset, name, iotime);
+        //else if (name == "ustar_wet")
+        //    cross.cross_plane(deposition_tiles.at("wet").ustar.data(), no_offset, name, iotime);
+        else if (name == "ra")
+            cross.cross_plane(ra_mean.data(), no_offset, name, iotime);
+        else if (name == "ccomp_tot")
+            cross.cross_plane(ccomp_mean.data(), no_offset, name, iotime);
+        else if (name == "ccomp_tot_veg")
+            cross.cross_plane(deposition_tiles.at("veg").ccomp_tot.data(), no_offset, name, iotime);
+        else if (name == "ccomp_tot_soil")
+            cross.cross_plane(deposition_tiles.at("soil").ccomp_tot.data(), no_offset, name, iotime);
+        else if (name == "ccomp_tot_wet")
+            cross.cross_plane(deposition_tiles.at("wet").ccomp_tot.data(), no_offset, name, iotime);
     }
 }
 
@@ -1082,7 +1170,7 @@ const TF Deposition<TF>::get_vd(const std::string& name) const
     }
 }
 
-template<typename TF>
+    template<typename TF>
 void Deposition<TF>::get_tiled_mean(
         TF* restrict fld_out, std::string name, const TF fac,
         const TF* const restrict fveg,
@@ -1144,6 +1232,16 @@ void Deposition<TF>::get_tiled_mean(
         fld_soil = deposition_tiles.at("soil").vdnh3.data();
         fld_wet  = deposition_tiles.at("wet").vdnh3.data();
     }
+    else if (name == "ra") {
+        fld_veg  = deposition_tiles.at("veg").ra.data();
+        fld_soil = deposition_tiles.at("soil").ra.data();
+        fld_wet  = deposition_tiles.at("wet").ra.data();
+    }
+    else if (name == "ccomp_tot") {
+        fld_veg  = deposition_tiles.at("veg").ccomp_tot.data();
+        fld_soil = deposition_tiles.at("soil").ccomp_tot.data();
+        fld_wet  = deposition_tiles.at("wet").ccomp_tot.data();
+    }
     else
         throw std::runtime_error("Cannot calculate tiled mean for variable \"" + name + "\"\\n");
 
@@ -1161,7 +1259,7 @@ void Deposition<TF>::get_tiled_mean(
             gd.icells);
 }
 
-template<typename TF>
+    template<typename TF>
 void Deposition<TF>::update_vd_water(
         TF* restrict fld_out, std::string name,
         const TF* const restrict ra,
@@ -1239,7 +1337,7 @@ void Deposition<TF>::update_vd_water(
             gd.icells);
 }
 
-template<typename TF>
+    template<typename TF>
 void Deposition<TF>::spatial_avg_vd(
         TF* restrict fld_out)
 {

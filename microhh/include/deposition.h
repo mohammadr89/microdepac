@@ -27,6 +27,7 @@ struct Deposition_tile
     std::vector<TF> ra;
     std::vector<TF> obuk;
     std::vector<TF> ustar;
+    std::vector<TF> ccomp_tot; // Compensation point (ug/m3)
 };
 
 template<typename TF>
@@ -118,6 +119,13 @@ class Deposition
 
         const std::string tend_name = "deposition";
         const std::string tend_longname = "Deposition";
+
+        bool sw_override_ccomp;       // Flag to override compensation point
+        TF ccomp_override_value;      // Value to use when overriding
+
+        // New arrays for grid-mean values
+        std::vector<TF> ra_mean;      // Grid-mean aerodynamic resistance
+        std::vector<TF> ccomp_mean;   // Grid-mean compensation point
 };
 #endif
 
