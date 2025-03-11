@@ -7,6 +7,7 @@
 #include "timeloop.h"
 #include "boundary_surface_lsm.h"
 #include "boundary.h"
+#include "radiation.h" // Include radiation header
 
 class Master;
 class Input;
@@ -15,6 +16,7 @@ template<typename> class Fields;
 template<typename> class Stats;
 template<typename> class Cross;
 template<typename> class Boundary_surface_lsm;
+template<typename> class Radiation;
 
 enum class Deposition_type {disabled, enabled, simple, average};
 
@@ -37,7 +39,7 @@ template<typename TF>
 class Deposition
 {
     public:
-        Deposition(Master&, Grid<TF>&, Fields<TF>&, Input&);
+        Deposition(Master&, Grid<TF>&, Fields<TF>&, Radiation<TF>&, Input&);
         ~Deposition();
 
         void init(Input&);
@@ -61,6 +63,7 @@ class Deposition
         Master& master;
         Grid<TF>& grid;
         Fields<TF>& fields;
+        Radiation<TF>& radiation; // Add radiation reference
 
         bool sw_deposition;
 
@@ -125,7 +128,8 @@ class Deposition
 
         // New arrays for grid-mean values
         std::vector<TF> ra_mean;      // Grid-mean aerodynamic resistance
+        std::vector<TF> obuk_mean;
+        std::vector<TF> ustar_mean;
         std::vector<TF> ccomp_mean;   // Grid-mean compensation point
 };
 #endif
-

@@ -77,13 +77,19 @@ class Radiation_prescribed : public Radiation<TF>
                 Column<TF>&, Thermo<TF>&, Microphys<TF>&, Timeloop<TF>&, Stats<TF>&,
                 Aerosol<TF>&, Background<TF>&) {};
 
-        #ifdef USECUDA
+        const TF* get_sw_flux_dn() const
+        {
+            return sw_flux_dn.data();
+        }
+
+
+#ifdef USECUDA
         TF* get_surface_radiation_g(const std::string&);
         void prepare_device();
         void clear_device();
         void forward_device();
         void backward_device();
-        #endif
+#endif
 
     private:
         using Radiation<TF>::swradiation;
@@ -112,11 +118,11 @@ class Radiation_prescribed : public Radiation<TF>
         std::unique_ptr<Timedep<TF>> tdep_lw_flux_dn;
         std::unique_ptr<Timedep<TF>> tdep_lw_flux_up;
 
-        #ifdef USECUDA
+#ifdef USECUDA
         TF* lw_flux_dn_g;
         TF* lw_flux_up_g;
         TF* sw_flux_dn_g;
         TF* sw_flux_up_g;
-        #endif
+#endif
 };
 #endif

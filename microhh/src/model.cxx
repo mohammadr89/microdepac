@@ -145,7 +145,7 @@ Model<TF>::Model(Master& masterin, int argc, char *argv[]) :
         source     = std::make_shared<Source <TF>>(master, *grid, *fields, *input);
         aerosol    = std::make_shared<Aerosol<TF>>(master, *grid, *fields, *input);
         background = std::make_shared<Background<TF>>(master, *grid, *fields, *input);
-        chemistry  = std::make_shared<Chemistry<TF>>(master, *grid, *fields, *input);
+        chemistry  = std::make_shared<Chemistry<TF>>(master, *grid, *fields, *radiation, *input);
         canopy     = std::make_shared<Canopy   <TF>>(master, *grid, *fields, *input);
 
         ib         = std::make_shared<Immersed_boundary<TF>>(master, *grid, *fields, *input);
@@ -428,7 +428,7 @@ void Model<TF>::exec()
 
                 // Add point and line sources of scalars.
                 source->exec(*timeloop);
-                
+
                 // KPP chemistry.
                 chemistry->exec(*thermo, timeloop->get_sub_time_step(), timeloop->get_dt());
 
