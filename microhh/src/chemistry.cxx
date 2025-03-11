@@ -76,7 +76,7 @@ namespace
 
 
 
-    template<typename TF>
+template<typename TF>
         void pss(
                 TF* restrict tnh3,
                 const TF* const restrict nh3,
@@ -177,24 +177,22 @@ namespace
 }
 
 template<typename TF>
-Chemistry<TF>::Chemistry(Master& masterin, Grid<TF>& gridin, Fields<TF>& fieldsin, Input& inputin) :
-    master(masterin), grid(gridin), fields(fieldsin), field3d_operators(master, grid, fields)
+Chemistry<TF>::Chemistry(Master& masterin, Grid<TF>& gridin, Fields<TF>& fieldsin, Radiation<TF>& radiationin, Input& inputin):
+    master(masterin), grid(gridin), fields(fieldsin), radiation(radiationin), field3d_operators(master, grid, fields)
 {
+    // Rest of the constructor remains the same
     const std::string group_name = "default";
     auto& gd = grid.get_grid_data();
-
     sw_chemistry = inputin.get_item<bool>("chemistry", "swchemistry", "", false);
     //lifetime     = inputin.get_item<TF>("chemistry", "lifetime", "", (TF)72000);  // seconds (20 hour default)
-    lifetime     = inputin.get_item<TF>("chemistry", "lifetime", "", (TF)1e30);  // seconds 
+    lifetime     = inputin.get_item<TF>("chemistry", "lifetime", "", (TF)1e30);  // seconds
     master.print_message("Lifetime of the tracer:  = %13.5e s \n", lifetime);
-
     if (!sw_chemistry)
         return;
-
-    deposition = std::make_shared<Deposition <TF>>(masterin, gridin, fieldsin, inputin);
+    deposition = std::make_shared<Deposition <TF>>(masterin, gridin, fieldsin, radiationin, inputin);
 }
 
-template <typename TF>
+    template <typename TF>
 Chemistry<TF>::~Chemistry()
 {
 }
@@ -269,7 +267,7 @@ void Chemistry<TF>::exec_stats(const int iteration, const double time, Stats<TF>
     // trfa = (TF) 0.0;
 }
 
-template <typename TF>
+    template <typename TF>
 void Chemistry<TF>::init(Input& inputin)
 {
     if (!sw_chemistry)
@@ -300,7 +298,7 @@ void Chemistry<TF>::init(Input& inputin)
     master.print_message("Deposition arrays initialized, e.g. with vdnh3 = %13.5e m/s \n", deposition-> get_vd("nh3"));
 }
 
-template <typename TF>
+    template <typename TF>
 void Chemistry<TF>::create(
         const Timeloop<TF>& timeloop, std::string sim_name, Netcdf_handle& input_nc,
         Stats<TF>& stats, Cross<TF>& cross)
@@ -484,7 +482,7 @@ void Chemistry<TF>::exec_cross(Cross<TF>& cross, unsigned long iotime)
     deposition->exec_cross(cross, iotime);
 }
 
-template <typename TF>
+    template <typename TF>
 void Chemistry<TF>::update_time_dependent(Timeloop<TF>& timeloop, Boundary<TF>& boundary, Thermo<TF>& thermo)
 
 
@@ -515,7 +513,7 @@ void Chemistry<TF>::update_time_dependent(Timeloop<TF>& timeloop, Boundary<TF>& 
 
 
 #ifndef USECUDA
-template <typename TF>
+    template <typename TF>
 void Chemistry<TF>::exec(Thermo<TF>& thermo,double sdt,double dt)
 {
     if (!sw_chemistry)

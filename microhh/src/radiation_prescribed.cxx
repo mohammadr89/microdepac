@@ -30,7 +30,7 @@
 template<typename TF>
 Radiation_prescribed<TF>::Radiation_prescribed(
         Master& masterin, Grid<TF>& gridin, Fields<TF>& fieldsin, Input& inputin) :
-        Radiation<TF>(masterin, gridin, fieldsin, inputin)
+    Radiation<TF>(masterin, gridin, fieldsin, inputin)
 {
     swradiation = "prescribed";
 
@@ -106,7 +106,7 @@ unsigned long Radiation_prescribed<TF>::get_time_limit(unsigned long itime)
     return Constants::ulhuge;
 }
 
-template <typename TF>
+    template <typename TF>
 void Radiation_prescribed<TF>::update_time_dependent(Timeloop<TF>& timeloop)
 {
     if (swtimedep_prescribed)

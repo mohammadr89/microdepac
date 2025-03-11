@@ -1,99 +1,287 @@
-error: The following untracked working tree files would be overwritten by checkout:
-	microhh/cases/andren1994/andren1994.ini
-	microhh/cases/andren1994/andren1994_input.py
-	microhh/cases/andren1994/andren1994_stats.py
-	microhh/cases/andren1994/andren1994_tableA1
-	microhh/cases/andren1994/readmicrohh.py
-	microhh/cases/arm/README.md
-	microhh/cases/arm/arm.ini
-	microhh/cases/arm/arm_input.py
-	microhh/cases/arm/arm_stats.py
-	microhh/cases/bomex/README.md
-	microhh/cases/bomex/bomex.ini
-	microhh/cases/bomex/bomex_input.py
-	microhh/cases/bomex/bomex_stats.py
-	microhh/cases/bomex/bomex_test.py
-	microhh/cases/bomex/filter.py
-	microhh/cases/cabauw/README.md
-	microhh/cases/cabauw/cabauw.ini.base
-	microhh/cases/cabauw/cabauw_input.py
-	microhh/cases/cabauw/cabauw_rt.ini.base
-	microhh/cases/cabauw/cabauw_rt_input.py
-	microhh/cases/cabauw/cabauw_test.py
-	microhh/cases/conservation/README.md
-	microhh/cases/conservation/conservation.ini
-	microhh/cases/conservation/conservation_input.py
-	microhh/cases/conservation/conservation_test.py
-	microhh/cases/dispersion/README.md
-	microhh/cases/dispersion/check_mass_conservation.py
-	microhh/cases/dispersion/dispersion_base.ini
-	microhh/cases/dispersion/dispersion_input.py
-	microhh/cases/dispersion/fit_gaussian_curve.py
-	microhh/cases/drycbl/drycbl.ini
-	microhh/cases/drycbl/drycbl_input.py
-	microhh/cases/drycbl/drycbl_test.py
-	microhh/cases/drycbl/drycbldecay.ini
-	microhh/cases/drycbl/var_budget.py
-	microhh/cases/drycblles/3d_to_nc.py
-	microhh/cases/drycblles/README.md
-	microhh/cases/drycblles/build_all.py
-	microhh/cases/drycblles/cross_to_nc.py
-	microhh/cases/drycblles/drycblles.ini
-	microhh/cases/drycblles/drycblles_fire.ini
-	microhh/cases/drycblles/drycblles_fire_input.py
-	microhh/cases/drycblles/drycblles_input.py
-	microhh/cases/drycblles/drycblles_stats.py
-	microhh/cases/drycblles/drycblles_test.py
-	microhh/cases/drycblles/drycblles_tuner.py
-	microhh/cases/drycblles/fix_overlapping_stats.py
-	microhh/cases/drycblles/lsm_input.py
-	microhh/cases/drycblles/makeanimframes.py
-	microhh/cases/drycblles/microhh
-	microhh/cases/drycblles/microhh_to_raytracer_input.py
-	microhh/cases/drycblles/microhh_tools.py
-	microhh/cases/drycblslope/drycblslope.ini
-	microhh/cases/drycblslope/drycblslope_input.py
-	microhh/cases/drycblslope/var_budget.py
-	microhh/cases/dycoms/dycoms.ini
-	microhh/cases/dycoms/dycoms_input.py
-	microhh/cases/dycoms/dycoms_stats.py
-	microhh/cases/eady/README.md
-	microhh/cases/eady/eady.ini
-	microhh/cases/eady/eady_info.py
-	microhh/cases/eady/eady_input.py
-	microhh/cases/ekman/README.md
-	microhh/cases/ekman/ekman.ini
-	microhh/cases/ekman/ekman_input.py
-	microhh/cases/ekman/ekmanstats.py
-	microhh/cases/gabls1/gabls1.ini
-	microhh/cases/gabls1/gabls1_input.py
-	microhh/cases/gabls1/gabls1_test.py
-	microhh/cases/gabls4s3/gabls4s3.ini
-	microhh/cases/gabls4s3/gabls4s3_input.py
-	microhh/cases/gabls4s3/gabls4s3_nbl.ini
-	microhh/cases/gabls4s3/gabls4s3_nbl_input.py
-	microhh/cases/ib_sine/README.md
-	microhh/cases/ib_sine/reference_data/README
-	microhh/cases/ib_sine/reference_data/pressure.dat.txt
-	microhh/cases/ib_sine/reference_data/xlam00_t.txt
-	microhh/cases/ib_sine/reference_data/xlam00_u.txt
-	microhh/cases/ib_sine/reference_data/xlam00_v.txt
-	microhh/cases/ib_sine/reference_data/xlam01_t.txt
-	microhh/cases/ib_sine/reference_data/xlam01_u.txt
-	microhh/cases/ib_sine/reference_data/xlam01_v.txt
-	microhh/cases/ib_sine/reference_data/xlam02_t.txt
-	microhh/cases/ib_sine/reference_data/xlam02_u.txt
-	microhh/cases/ib_sine/reference_data/xlam02_v.txt
-	microhh/cases/ib_sine/reference_data/xlam03_t.txt
-	microhh/cases/ib_sine/reference_data/xlam03_u.txt
-	microhh/cases/ib_sine/reference_data/xlam03_v.txt
-	microhh/cases/ib_sine/reference_data/xlam04_t.txt
-	microhh/cases/ib_sine/reference_data/xlam04_u.txt
-	microhh/cases/ib_sine/reference_data/xlam04_v.txt
-	microhh/cases/ib_sine/reference_data/xlam05_t.txt
-	microhh/cases/ib_sine/reference_data/xlam05_u.txt
-	microhh/cases/ib_sine/reference_data/xlam05_v.txt
-	microhh/cases/ib_sine/reference_data/xlam06_t.txt
-	microhh/cases/ib_sine/reference_data/xlam06_u.txt
-	microh
-Aborting
+diff --git a/microhh/src/chemistry.cxx b/microhh/src/chemistry.cxx
+index e0ea0f0c..8b363ef9 100644
+--- a/microhh/src/chemistry.cxx
++++ b/microhh/src/chemistry.cxx
+@@ -177,7 +177,7 @@ namespace
+ }
+ 
+ template<typename TF>
+-Chemistry<TF>::Chemistry(Master& masterin, Grid<TF>& gridin, Fields<TF>& fieldsin, Input& inputin) :
++Chemistry<TF>::Chemistry(Master& masterin, Grid<TF>& gridin, Fields<TF>& fieldsin, Input& inputin):
+     master(masterin), grid(gridin), fields(fieldsin), field3d_operators(master, grid, fields)
+ {
+     const std::string group_name = "default";
+diff --git a/microhh/src/deposition.cxx b/microhh/src/deposition.cxx
+index 639d2473..7b40b361 100644
+--- a/microhh/src/deposition.cxx
++++ b/microhh/src/deposition.cxx
+@@ -72,6 +72,7 @@
+ #include <math.h>
+ #include <sstream>
+ #include <utility>
++#include "radiation_rrtmgp_functions.h"
+ 
+ 
+ // Added: C linkage for DEPAC Fortran wrapper
+@@ -195,54 +196,6 @@ namespace {
+             //    }
+         }
+ 
+-
+-    template<typename TF>
+-        TF calculate_sinphi(int day_of_year, TF latitude, TF hour) {
+-            // Convert degrees to radians
+-            const TF deg2rad = M_PI / 180.0;
+-            const TF rad2deg = 180.0 / M_PI;
+-
+-            // Calculate day angle
+-            const TF day_angle = 2.0 * M_PI * (day_of_year - 1) / 365.0;
+-
+-            // Calculate solar declination (Spencer's formula)
+-            const TF declination = 0.006918 
+-                - 0.399912 * std::cos(day_angle) 
+-                + 0.070257 * std::sin(day_angle) 
+-                - 0.006758 * std::cos(2.0 * day_angle) 
+-                + 0.000907 * std::sin(2.0 * day_angle) 
+-                - 0.002697 * std::cos(3.0 * day_angle) 
+-                + 0.001480 * std::sin(3.0 * day_angle);
+-
+-            // Calculate hour angle (15° per hour from solar noon)
+-            const TF hour_angle = deg2rad * 15.0 * (hour - 12.0);
+-
+-            // Calculate sine of solar elevation
+-            const TF lat_rad = deg2rad * latitude;
+-            TF sinphi = std::sin(lat_rad) * std::sin(declination) + 
+-                std::cos(lat_rad) * std::cos(declination) * std::cos(hour_angle);
+-
+-            // Ensure value stays within [-1,1] to avoid numerical errors
+-            sinphi = std::max(TF(-1.0), std::min(TF(1.0), sinphi));
+-
+-            //// Debug prints
+-            //std::cout << "\n=== Solar Angle Calculation Debug ===" << std::endl;
+-            //std::cout << "Inputs:" << std::endl;
+-            //std::cout << "  Day of year: " << day_of_year << std::endl;
+-            //std::cout << "  Latitude: " << latitude << "°N" << std::endl;
+-            //std::cout << "  Hour: " << hour << ":00" << std::endl;
+-            //std::cout << "Calculated values:" << std::endl;
+-            //std::cout << "  Day angle: " << day_angle * rad2deg << "°" << std::endl;
+-            //std::cout << "  Declination: " << declination * rad2deg << "°" << std::endl;
+-            //std::cout << "  Hour angle: " << hour_angle * rad2deg << "°" << std::endl;
+-            //std::cout << "  Sinphi: " << sinphi << std::endl;
+-            //std::cout << "  Solar elevation angle: " << std::asin(sinphi) * rad2deg << "°" << std::endl;
+-            //std::cout << "  Solar zenith angle: " << 90.0 - (std::asin(sinphi) * rad2deg) << "°" << std::endl;
+-            //std::cout << "==================================\n" << std::endl;
+-
+-            return sinphi;
+-        }
+-
+     template<typename TF>
+         void calc_deposition_per_tile(
+                 Master& master,           // Add Master reference as parameter
+@@ -652,28 +605,21 @@ Deposition<TF>::Deposition(Master& masterin, Grid<TF>& gridin, Fields<TF>& field
+ 
+     // Added: Initialize DEPAC parameters for NH3 deposition
+ 
+-
+     // Get start hour from input
+-    //TF start_hour = inputin.get_item<TF>("deposition", "start_hour", "", TF(0.0)); 
++    //TF start_hour = inputin.get_item<TF>("deposition", "start_hour", "", TF(0.0));
+     TF start_hour = inputin.get_item<TF>("deposition", "start_hour", "");
+     master.print_message("Successfully loaded start_hour = %f from input file\n", start_hour);
+ 
+     // Initialize radiation parameters
+     t0 = start_hour * 3600;        // Convert start hour to seconds (e.g., 7:00 = 25200s)
+     td = TF(12*3600);              // 12 hour day length
+-                                   //max_rad = TF(400.0);           
+-                                   // Get max_rad from radiation section instead of hardcoding
+-    max_rad = inputin.get_item<TF>("radiation", "max_rad", ""); 
++    //max_rad = TF(400.0);
++    // Get max_rad from radiation section instead of hardcoding
++    max_rad = inputin.get_item<TF>("radiation", "max_rad", "");
+     master.print_message("Using max_rad = %f W/m2 from radiation section\n", max_rad);
+ 
+     glrad = TF(0.0);               // Initial value
+ 
+-    //master.print_message("Radiation parameters initialized:\n");
+-    //master.print_message("  start_hour = %f\n", start_hour);
+-    //master.print_message("  t0 = %f s\n", t0);
+-    //master.print_message("  td = %f s\n", td);
+-    //master.print_message("  max_rad = %f W/m2\n", max_rad);
+-
+     // Radiation parameters
+     //glrad = inputin.get_item<TF>("deposition", "glrad", "", (TF)400.0);                // Global radiation (W/m2)
+     //sinphi = inputin.get_item<TF>("deposition", "sinphi", "", (TF)0.75);               // Sine of solar elevation:  Solar elevation angle at noon ≈ 48.5° ==>  sinphi = sin(48.5°) ≈ 0.75
+@@ -864,19 +810,21 @@ void Deposition<TF>::update_time_dependent(
+     // Get current model time
+     const TF model_time = timeloop.get_time();
+ 
+-    // Calculate actual time of day (t0 is 7:00 = 25200 seconds)
++    // Calculate actual time of day 
+     const TF actual_time = t0 + model_time;
+ 
+-    const std::vector<TF>& rho = thermo.get_basestate_vector("rho");
++    master.print_message("DEBUG: GLRAD variables - max_rad: %f, t0: %f, td: %f, model_time: %f, actual_time: %f\n",
++            max_rad, t0, td, model_time, actual_time);
+ 
+-    //// Debug prints
+-    //master.print_message("Time components: model_time = %f, actual_time = %f, t0 = %f, td = %f, max_rad = %f\n", 
+-    //        model_time, actual_time, t0, td, max_rad);
++    const std::vector<TF>& rho = thermo.get_basestate_vector("rho");
+ 
+     // Calculate radiation using actual time of day
+     glrad = max_rad * std::sin(M_PI * (actual_time - t0) / td);
+     glrad = std::max(glrad, TF(0.0));
+ 
++    // Additional debug print for the calculated glrad value
++    master.print_message("DEBUG: Calculated global radiation (glrad) = %f W/m2\n", glrad);
++
+     //// Debug prints
+     //master.print_message("Global radiation = %f W/m2\n", glrad);
+ 
+@@ -886,30 +834,19 @@ void Deposition<TF>::update_time_dependent(
+     // Get latitude from Grid
+     lat = gd.lat;
+ 
+-    // Calculate current hour and sinphi
+-    //const TF current_hour = t0/3600.0 + (model_time / 3600.0);  // Convert t0 and model_time from seconds to hours
+-    const TF current_hour = t0/3600.0 + (timeloop.get_time() / 3600.0);  // Convert t0 and model_time from seconds to hours
+-    sinphi = calculate_sinphi(day_of_year, lat, current_hour);
+-
+-    //master.print_message("\n=== Time Calculation Debug ===\n");
+-    //master.print_message("t0 value = %.2f seconds (%.2f hours)\n", t0, t0/3600.0);
+-    //master.print_message("timeloop.get_time() = %.2f seconds\n", timeloop.get_time());
+-    //master.print_message("current_hour calculation: %.2f + %.2f = %.2f\n",
+-    //t0/3600.0, timeloop.get_time()/3600.0, current_hour);
+-
+-    //master.print_message("\n=== Solar Parameters Debug ===\n");
+-    //master.print_message("Latitude from grid: %.6f degrees\n", lat);
+-    //master.print_message("Day of year from timeloop: %d\n", day_of_year);
+-    //master.print_message("Sine of solar elevation (sinphi): %.6f\n", sinphi);
+-    //master.print_message("==============================\n");
+-
+-    //// Additional debug print for final values
+-    //std::cout << "\n=== Final Values for DEPAC ===" << std::endl;
+-    //std::cout << "Current hour: " << current_hour << std::endl;
+-    //std::cout << "Global radiation: " << glrad << " W/m2" << std::endl;
+-    //std::cout << "Sinphi: " << sinphi << std::endl;
+-    //std::cout << "============================\n" << std::endl;
++    const int year = timeloop.get_year();
++    const TF seconds_after_midnight = TF(timeloop.calc_hour_of_day() * 3600);
++    TF azimuth;
++
++    // Calculate sinphi using the radiation function
++    std::tie(sinphi, azimuth) = Radiation_rrtmgp_functions::calc_cos_zenith_angle(
++            lat, gd.lon, day_of_year, seconds_after_midnight, year);
++
+ 
++    master.print_message("DEBUG: Time step %f, Hour of day %f, sinphi (from radiation) = %f\n", 
++            timeloop.get_time(), 
++            timeloop.calc_hour_of_day(),
++            sinphi);
+ 
+     ///  // Get RH from thermo and convert to %
+     ///  auto tmp1 = fields.get_tmp();
+diff --git a/microhh/src/text.txt b/microhh/src/text.txt
+index e8c03a97..da2fdccc 100644
+--- a/microhh/src/text.txt
++++ b/microhh/src/text.txt
+@@ -1,99 +0,0 @@
+-error: The following untracked working tree files would be overwritten by checkout:
+-	microhh/cases/andren1994/andren1994.ini
+-	microhh/cases/andren1994/andren1994_input.py
+-	microhh/cases/andren1994/andren1994_stats.py
+-	microhh/cases/andren1994/andren1994_tableA1
+-	microhh/cases/andren1994/readmicrohh.py
+-	microhh/cases/arm/README.md
+-	microhh/cases/arm/arm.ini
+-	microhh/cases/arm/arm_input.py
+-	microhh/cases/arm/arm_stats.py
+-	microhh/cases/bomex/README.md
+-	microhh/cases/bomex/bomex.ini
+-	microhh/cases/bomex/bomex_input.py
+-	microhh/cases/bomex/bomex_stats.py
+-	microhh/cases/bomex/bomex_test.py
+-	microhh/cases/bomex/filter.py
+-	microhh/cases/cabauw/README.md
+-	microhh/cases/cabauw/cabauw.ini.base
+-	microhh/cases/cabauw/cabauw_input.py
+-	microhh/cases/cabauw/cabauw_rt.ini.base
+-	microhh/cases/cabauw/cabauw_rt_input.py
+-	microhh/cases/cabauw/cabauw_test.py
+-	microhh/cases/conservation/README.md
+-	microhh/cases/conservation/conservation.ini
+-	microhh/cases/conservation/conservation_input.py
+-	microhh/cases/conservation/conservation_test.py
+-	microhh/cases/dispersion/README.md
+-	microhh/cases/dispersion/check_mass_conservation.py
+-	microhh/cases/dispersion/dispersion_base.ini
+-	microhh/cases/dispersion/dispersion_input.py
+-	microhh/cases/dispersion/fit_gaussian_curve.py
+-	microhh/cases/drycbl/drycbl.ini
+-	microhh/cases/drycbl/drycbl_input.py
+-	microhh/cases/drycbl/drycbl_test.py
+-	microhh/cases/drycbl/drycbldecay.ini
+-	microhh/cases/drycbl/var_budget.py
+-	microhh/cases/drycblles/3d_to_nc.py
+-	microhh/cases/drycblles/README.md
+-	microhh/cases/drycblles/build_all.py
+-	microhh/cases/drycblles/cross_to_nc.py
+-	microhh/cases/drycblles/drycblles.ini
+-	microhh/cases/drycblles/drycblles_fire.ini
+-	microhh/cases/drycblles/drycblles_fire_input.py
+-	microhh/cases/drycblles/drycblles_input.py
+-	microhh/cases/drycblles/drycblles_stats.py
+-	microhh/cases/drycblles/drycblles_test.py
+-	microhh/cases/drycblles/drycblles_tuner.py
+-	microhh/cases/drycblles/fix_overlapping_stats.py
+-	microhh/cases/drycblles/lsm_input.py
+-	microhh/cases/drycblles/makeanimframes.py
+-	microhh/cases/drycblles/microhh
+-	microhh/cases/drycblles/microhh_to_raytracer_input.py
+-	microhh/cases/drycblles/microhh_tools.py
+-	microhh/cases/drycblslope/drycblslope.ini
+-	microhh/cases/drycblslope/drycblslope_input.py
+-	microhh/cases/drycblslope/var_budget.py
+-	microhh/cases/dycoms/dycoms.ini
+-	microhh/cases/dycoms/dycoms_input.py
+-	microhh/cases/dycoms/dycoms_stats.py
+-	microhh/cases/eady/README.md
+-	microhh/cases/eady/eady.ini
+-	microhh/cases/eady/eady_info.py
+-	microhh/cases/eady/eady_input.py
+-	microhh/cases/ekman/README.md
+-	microhh/cases/ekman/ekman.ini
+-	microhh/cases/ekman/ekman_input.py
+-	microhh/cases/ekman/ekmanstats.py
+-	microhh/cases/gabls1/gabls1.ini
+-	microhh/cases/gabls1/gabls1_input.py
+-	microhh/cases/gabls1/gabls1_test.py
+-	microhh/cases/gabls4s3/gabls4s3.ini
+-	microhh/cases/gabls4s3/gabls4s3_input.py
+-	microhh/cases/gabls4s3/gabls4s3_nbl.ini
+-	microhh/cases/gabls4s3/gabls4s3_nbl_input.py
+-	microhh/cases/ib_sine/README.md
+-	microhh/cases/ib_sine/reference_data/README
+-	microhh/cases/ib_sine/reference_data/pressure.dat.txt
+-	microhh/cases/ib_sine/reference_data/xlam00_t.txt
+-	microhh/cases/ib_sine/reference_data/xlam00_u.txt
+-	microhh/cases/ib_sine/reference_data/xlam00_v.txt
+-	microhh/cases/ib_sine/reference_data/xlam01_t.txt
+-	microhh/cases/ib_sine/reference_data/xlam01_u.txt
+-	microhh/cases/ib_sine/reference_data/xlam01_v.txt
+-	microhh/cases/ib_sine/reference_data/xlam02_t.txt
+-	microhh/cases/ib_sine/reference_data/xlam02_u.txt
+-	microhh/cases/ib_sine/reference_data/xlam02_v.txt
+-	microhh/cases/ib_sine/reference_data/xlam03_t.txt
+-	microhh/cases/ib_sine/reference_data/xlam03_u.txt
+-	microhh/cases/ib_sine/reference_data/xlam03_v.txt
+-	microhh/cases/ib_sine/reference_data/xlam04_t.txt
+-	microhh/cases/ib_sine/reference_data/xlam04_u.txt
+-	microhh/cases/ib_sine/reference_data/xlam04_v.txt
+-	microhh/cases/ib_sine/reference_data/xlam05_t.txt
+-	microhh/cases/ib_sine/reference_data/xlam05_u.txt
+-	microhh/cases/ib_sine/reference_data/xlam05_v.txt
+-	microhh/cases/ib_sine/reference_data/xlam06_t.txt
+-	microhh/cases/ib_sine/reference_data/xlam06_u.txt
+-	microh
+-Aborting

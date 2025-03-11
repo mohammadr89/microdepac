@@ -72,6 +72,8 @@
 #include <math.h>
 #include <sstream>
 #include <utility>
+#include "radiation_rrtmgp_functions.h"
+#include "radiation_prescribed.h"
 
 
 // Added: C linkage for DEPAC Fortran wrapper
@@ -108,7 +110,7 @@ extern "C" {
 
 namespace {
 
-    template<typename TF>
+template<typename TF>
         void calc_tiled_mean(
                 TF* const restrict fld,
                 const TF* const restrict f_veg,
@@ -135,7 +137,7 @@ namespace {
                 }
         }
 
-    template<typename TF>
+template<typename TF>
         void calc_vd_water(
                 TF* const restrict fld,
                 const TF* const restrict ra,
@@ -163,7 +165,7 @@ namespace {
                 }
         }
 
-    template<typename TF>
+template<typename TF>
         void calc_spatial_avg_deposition(
                 TF* const restrict fld,
                 const int istart, const int iend,
@@ -195,55 +197,7 @@ namespace {
             //    }
         }
 
-
-    template<typename TF>
-        TF calculate_sinphi(int day_of_year, TF latitude, TF hour) {
-            // Convert degrees to radians
-            const TF deg2rad = M_PI / 180.0;
-            const TF rad2deg = 180.0 / M_PI;
-
-            // Calculate day angle
-            const TF day_angle = 2.0 * M_PI * (day_of_year - 1) / 365.0;
-
-            // Calculate solar declination (Spencer's formula)
-            const TF declination = 0.006918 
-                - 0.399912 * std::cos(day_angle) 
-                + 0.070257 * std::sin(day_angle) 
-                - 0.006758 * std::cos(2.0 * day_angle) 
-                + 0.000907 * std::sin(2.0 * day_angle) 
-                - 0.002697 * std::cos(3.0 * day_angle) 
-                + 0.001480 * std::sin(3.0 * day_angle);
-
-            // Calculate hour angle (15° per hour from solar noon)
-            const TF hour_angle = deg2rad * 15.0 * (hour - 12.0);
-
-            // Calculate sine of solar elevation
-            const TF lat_rad = deg2rad * latitude;
-            TF sinphi = std::sin(lat_rad) * std::sin(declination) + 
-                std::cos(lat_rad) * std::cos(declination) * std::cos(hour_angle);
-
-            // Ensure value stays within [-1,1] to avoid numerical errors
-            sinphi = std::max(TF(-1.0), std::min(TF(1.0), sinphi));
-
-            //// Debug prints
-            //std::cout << "\n=== Solar Angle Calculation Debug ===" << std::endl;
-            //std::cout << "Inputs:" << std::endl;
-            //std::cout << "  Day of year: " << day_of_year << std::endl;
-            //std::cout << "  Latitude: " << latitude << "°N" << std::endl;
-            //std::cout << "  Hour: " << hour << ":00" << std::endl;
-            //std::cout << "Calculated values:" << std::endl;
-            //std::cout << "  Day angle: " << day_angle * rad2deg << "°" << std::endl;
-            //std::cout << "  Declination: " << declination * rad2deg << "°" << std::endl;
-            //std::cout << "  Hour angle: " << hour_angle * rad2deg << "°" << std::endl;
-            //std::cout << "  Sinphi: " << sinphi << std::endl;
-            //std::cout << "  Solar elevation angle: " << std::asin(sinphi) * rad2deg << "°" << std::endl;
-            //std::cout << "  Solar zenith angle: " << 90.0 - (std::asin(sinphi) * rad2deg) << "°" << std::endl;
-            //std::cout << "==================================\n" << std::endl;
-
-            return sinphi;
-        }
-
-    template<typename TF>
+template<typename TF>
         void calc_deposition_per_tile(
                 Master& master,           // Add Master reference as parameter
                 const std::string lu_type,
@@ -645,34 +599,15 @@ namespace {
 
 
 template<typename TF>
-Deposition<TF>::Deposition(Master& masterin, Grid<TF>& gridin, Fields<TF>& fieldsin, Input& inputin) :
-    master(masterin), grid(gridin), fields(fieldsin)
+Deposition<TF>::Deposition(Master& masterin, Grid<TF>& gridin, Fields<TF>& fieldsin, 
+        Radiation<TF>& radiationin, Input& inputin) :
+    master(masterin), grid(gridin), fields(fieldsin), radiation(radiationin)
 {
     sw_deposition = inputin.get_item<bool>("deposition", "swdeposition", "", false);
 
     // Added: Initialize DEPAC parameters for NH3 deposition
 
-
     // Get start hour from input
-    //TF start_hour = inputin.get_item<TF>("deposition", "start_hour", "", TF(0.0)); 
-    TF start_hour = inputin.get_item<TF>("deposition", "start_hour", "");
-    master.print_message("Successfully loaded start_hour = %f from input file\n", start_hour);
-
-    // Initialize radiation parameters
-    t0 = start_hour * 3600;        // Convert start hour to seconds (e.g., 7:00 = 25200s)
-    td = TF(12*3600);              // 12 hour day length
-                                   //max_rad = TF(400.0);           
-                                   // Get max_rad from radiation section instead of hardcoding
-    max_rad = inputin.get_item<TF>("radiation", "max_rad", ""); 
-    master.print_message("Using max_rad = %f W/m2 from radiation section\n", max_rad);
-
-    glrad = TF(0.0);               // Initial value
-
-    //master.print_message("Radiation parameters initialized:\n");
-    //master.print_message("  start_hour = %f\n", start_hour);
-    //master.print_message("  t0 = %f s\n", t0);
-    //master.print_message("  td = %f s\n", td);
-    //master.print_message("  max_rad = %f W/m2\n", max_rad);
 
     // Radiation parameters
     //glrad = inputin.get_item<TF>("deposition", "glrad", "", (TF)400.0);                // Global radiation (W/m2)
@@ -864,21 +799,10 @@ void Deposition<TF>::update_time_dependent(
     // Get current model time
     const TF model_time = timeloop.get_time();
 
-    // Calculate actual time of day (t0 is 7:00 = 25200 seconds)
+    // Calculate actual time of day 
     const TF actual_time = t0 + model_time;
 
     const std::vector<TF>& rho = thermo.get_basestate_vector("rho");
-
-    //// Debug prints
-    //master.print_message("Time components: model_time = %f, actual_time = %f, t0 = %f, td = %f, max_rad = %f\n", 
-    //        model_time, actual_time, t0, td, max_rad);
-
-    // Calculate radiation using actual time of day
-    glrad = max_rad * std::sin(M_PI * (actual_time - t0) / td);
-    glrad = std::max(glrad, TF(0.0));
-
-    //// Debug prints
-    //master.print_message("Global radiation = %f W/m2\n", glrad);
 
     // Get day of year from Timeloop
     day_of_year = int(timeloop.calc_day_of_year());
@@ -886,30 +810,29 @@ void Deposition<TF>::update_time_dependent(
     // Get latitude from Grid
     lat = gd.lat;
 
-    // Calculate current hour and sinphi
-    //const TF current_hour = t0/3600.0 + (model_time / 3600.0);  // Convert t0 and model_time from seconds to hours
-    const TF current_hour = t0/3600.0 + (timeloop.get_time() / 3600.0);  // Convert t0 and model_time from seconds to hours
-    sinphi = calculate_sinphi(day_of_year, lat, current_hour);
+    const int year = timeloop.get_year();
+    const TF seconds_after_midnight = TF(timeloop.calc_hour_of_day() * 3600);
+    TF azimuth;
 
-    //master.print_message("\n=== Time Calculation Debug ===\n");
-    //master.print_message("t0 value = %.2f seconds (%.2f hours)\n", t0, t0/3600.0);
-    //master.print_message("timeloop.get_time() = %.2f seconds\n", timeloop.get_time());
-    //master.print_message("current_hour calculation: %.2f + %.2f = %.2f\n",
-    //t0/3600.0, timeloop.get_time()/3600.0, current_hour);
+    // Calculate sinphi using the radiation function
+    std::tie(sinphi, azimuth) = Radiation_rrtmgp_functions::calc_cos_zenith_angle(
+            lat, gd.lon, day_of_year, seconds_after_midnight, year);
 
-    //master.print_message("\n=== Solar Parameters Debug ===\n");
-    //master.print_message("Latitude from grid: %.6f degrees\n", lat);
-    //master.print_message("Day of year from timeloop: %d\n", day_of_year);
-    //master.print_message("Sine of solar elevation (sinphi): %.6f\n", sinphi);
-    //master.print_message("==============================\n");
+    //master.print_message("DEBUG: Time step %f, Hour of day %f, sinphi (from radiation) = %f\n", 
+    //        timeloop.get_time(), 
+    //        timeloop.calc_hour_of_day(),
+    //        sinphi);
 
-    //// Additional debug print for final values
-    //std::cout << "\n=== Final Values for DEPAC ===" << std::endl;
-    //std::cout << "Current hour: " << current_hour << std::endl;
-    //std::cout << "Global radiation: " << glrad << " W/m2" << std::endl;
-    //std::cout << "Sinphi: " << sinphi << std::endl;
-    //std::cout << "============================\n" << std::endl;
+    //master.print_message("DEBUG: About to access radiation, hour = %f\n", timeloop.calc_hour_of_day());
 
+
+    const Radiation_prescribed<TF>& radiation_prescribed = static_cast<const Radiation_prescribed<TF>&>(radiation);
+
+    //master.print_message("DEBUG: About to access radiation, hour = %f\n", timeloop.calc_hour_of_day());
+
+    // Access the first element of the array
+    glrad = radiation_prescribed.get_sw_flux_dn()[0];  // Use index 0 to get the correct value
+    //master.print_message("DEBUG: Using sw_flux_dn from radiation module as glrad: %f W/m2\n", glrad);
 
     ///  // Get RH from thermo and convert to %
     ///  auto tmp1 = fields.get_tmp();
@@ -1052,7 +975,7 @@ void Deposition<TF>::update_time_dependent(
     // spatial_avg_vd(vdnh3);  // Added NH3
 }
 
-    template<typename TF>
+template<typename TF>
 void Deposition<TF>::exec_cross(Cross<TF>& cross, unsigned long iotime)
 {
     if (!sw_deposition)
@@ -1170,7 +1093,7 @@ const TF Deposition<TF>::get_vd(const std::string& name) const
     }
 }
 
-    template<typename TF>
+template<typename TF>
 void Deposition<TF>::get_tiled_mean(
         TF* restrict fld_out, std::string name, const TF fac,
         const TF* const restrict fveg,
@@ -1259,7 +1182,7 @@ void Deposition<TF>::get_tiled_mean(
             gd.icells);
 }
 
-    template<typename TF>
+template<typename TF>
 void Deposition<TF>::update_vd_water(
         TF* restrict fld_out, std::string name,
         const TF* const restrict ra,
@@ -1337,7 +1260,7 @@ void Deposition<TF>::update_vd_water(
             gd.icells);
 }
 
-    template<typename TF>
+template<typename TF>
 void Deposition<TF>::spatial_avg_vd(
         TF* restrict fld_out)
 {
