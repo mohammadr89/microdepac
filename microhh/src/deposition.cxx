@@ -390,6 +390,8 @@ template<typename TF>
                                                                     deposition_tiles.at(lu_type).cw_out.data()[ij] = cw_out;
                                                                     deposition_tiles.at(lu_type).cstom_out.data()[ij] = cstom_out;
                                                                     deposition_tiles.at(lu_type).csoil_out.data()[ij] = csoil_out;
+                                                                    deposition_tiles.at(lu_type).rc_tot.data()[ij] = rc_tot;
+                                                                    deposition_tiles.at(lu_type).rc_eff.data()[ij] = rc_eff;
 
 
                                                                     vdnh3[ij] = (TF)1.0 / (ra[ij] + rb + rc_eff);
@@ -492,6 +494,8 @@ template<typename TF>
                                                       deposition_tiles.at(lu_type).cw_out.data()[ij] = cw_out;
                                                       deposition_tiles.at(lu_type).cstom_out.data()[ij] = cstom_out;
                                                       deposition_tiles.at(lu_type).csoil_out.data()[ij] = csoil_out;
+                                                      deposition_tiles.at(lu_type).rc_tot.data()[ij] = rc_tot;
+                                                      deposition_tiles.at(lu_type).rc_eff.data()[ij] = rc_eff;
 
 
                                                       vdnh3[ij] = (TF)1.0 / (ra[ij] + rb + rsoil_eff_out);
@@ -608,6 +612,8 @@ template<typename TF>
                                                                         deposition_tiles.at(lu_type).cw_out.data()[ij] = cw_out;
                                                                         deposition_tiles.at(lu_type).cstom_out.data()[ij] = cstom_out;
                                                                         deposition_tiles.at(lu_type).csoil_out.data()[ij] = csoil_out;
+                                                                        deposition_tiles.at(lu_type).rc_tot.data()[ij] = rc_tot;
+                                                                        deposition_tiles.at(lu_type).rc_eff.data()[ij] = rc_eff;
 
 
                                                                         vdnh3[ij] = (TF)1.0 / (ra[ij] + rb + rc_eff);
@@ -685,6 +691,8 @@ template<typename TF>
                                                           deposition_tiles.at(lu_type).cw_out.data()[ij] = cw_out;
                                                           deposition_tiles.at(lu_type).cstom_out.data()[ij] = cstom_out;
                                                           deposition_tiles.at(lu_type).csoil_out.data()[ij] = csoil_out;
+                                                          deposition_tiles.at(lu_type).rc_tot.data()[ij] = rc_tot;
+                                                          deposition_tiles.at(lu_type).rc_eff.data()[ij] = rc_eff;
 
 
                                                           vdnh3[ij] = (TF)1.0 / (ra[ij] + rb + rsoil_eff_out);
@@ -796,6 +804,8 @@ void Deposition<TF>::init(Input& inputin)
         tile.second.cw_out.resize(gd.ijcells);
         tile.second.cstom_out.resize(gd.ijcells);
         tile.second.csoil_out.resize(gd.ijcells);
+        tile.second.rc_tot.resize(gd.ijcells);
+        tile.second.rc_eff.resize(gd.ijcells);
     }
     // Initialize grid-mean arrays
     ra_mean.resize(gd.ijcells);
@@ -806,6 +816,8 @@ void Deposition<TF>::init(Input& inputin)
     cw_out_mean.resize(gd.ijcells);
     cstom_out_mean.resize(gd.ijcells);
     csoil_out_mean.resize(gd.ijcells);
+    rc_tot_mean.resize(gd.ijcells);
+    rc_eff_mean.resize(gd.ijcells);
 
     deposition_tiles.at("veg" ).long_name = "vegetation";
     deposition_tiles.at("soil").long_name = "bare soil";
@@ -892,7 +904,9 @@ void Deposition<TF>::create(Stats<TF>& stats, Cross<TF>& cross)
             "cw_out", "cstom_out", "csoil_out", 
             "cw_out_soil", "cw_out_wet", "cw_out_veg",
             "cstom_out_soil", "cstom_out_wet", "cstom_out_veg",
-            "csoil_out_soil", "csoil_out_wet", "csoil_out_veg"
+            "csoil_out_soil", "csoil_out_wet", "csoil_out_veg",
+            "rc_tot", "rc_tot_veg", "rc_tot_soil", "rc_tot_wet",
+            "rc_eff", "rc_eff_veg", "rc_eff_soil", "rc_eff_wet"
         };
 
         cross_list = cross.get_enabled_variables(allowed_crossvars);
@@ -1085,6 +1099,8 @@ void Deposition<TF>::update_time_dependent(
     get_tiled_mean(cw_out_mean.data(), "cw_out", (TF)1.0, tiles.at("veg").fraction.data(), tiles.at("soil").fraction.data(), tiles.at("wet").fraction.data());
     get_tiled_mean(cstom_out_mean.data(), "cstom_out", (TF)1.0, tiles.at("veg").fraction.data(), tiles.at("soil").fraction.data(), tiles.at("wet").fraction.data());
     get_tiled_mean(csoil_out_mean.data(), "csoil_out", (TF)1.0, tiles.at("veg").fraction.data(), tiles.at("soil").fraction.data(), tiles.at("wet").fraction.data());
+    get_tiled_mean(rc_tot_mean.data(), "rc_tot", (TF)1.0, tiles.at("veg").fraction.data(), tiles.at("soil").fraction.data(), tiles.at("wet").fraction.data());
+    get_tiled_mean(rc_eff_mean.data(), "rc_eff", (TF)1.0, tiles.at("veg").fraction.data(), tiles.at("soil").fraction.data(), tiles.at("wet").fraction.data());
     // cmk: we use the wet-tile info for u* and ra, since these are calculated in lsm with f_wet = 100%
     // update_vd_water(vdo3,"o3",tiles.at("wet").ra.data(),tiles.at("wet").ustar.data(),water_mask.data(),diff_scl.data(),rwat.data());
     // update_vd_water(vdno,"no",tiles.at("wet").ra.data(),tiles.at("wet").ustar.data(),water_mask.data(),diff_scl.data(),rwat.data());
@@ -1205,9 +1221,24 @@ void Deposition<TF>::exec_cross(Cross<TF>& cross, unsigned long iotime)
             cross.cross_plane(cstom_out_mean.data(), no_offset, name, iotime);
         else if (name == "csoil_out")
             cross.cross_plane(csoil_out_mean.data(), no_offset, name, iotime);
-        // Also add individual tile versions if needed
         else if (name == "cw_veg")
             cross.cross_plane(deposition_tiles.at("veg").cw.data(), no_offset, name, iotime);
+        else if (name == "rc_tot")
+            cross.cross_plane(rc_tot_mean.data(), no_offset, name, iotime);
+        else if (name == "rc_tot_veg")
+            cross.cross_plane(deposition_tiles.at("veg").rc_tot.data(), no_offset, name, iotime);
+        else if (name == "rc_tot_soil")
+            cross.cross_plane(deposition_tiles.at("soil").rc_tot.data(), no_offset, name, iotime);
+        else if (name == "rc_tot_wet")
+            cross.cross_plane(deposition_tiles.at("wet").rc_tot.data(), no_offset, name, iotime);
+        else if (name == "rc_eff")
+            cross.cross_plane(rc_eff_mean.data(), no_offset, name, iotime);
+        else if (name == "rc_eff_veg")
+            cross.cross_plane(deposition_tiles.at("veg").rc_eff.data(), no_offset, name, iotime);
+        else if (name == "rc_eff_soil")
+            cross.cross_plane(deposition_tiles.at("soil").rc_eff.data(), no_offset, name, iotime);
+        else if (name == "rc_eff_wet")
+            cross.cross_plane(deposition_tiles.at("wet").rc_eff.data(), no_offset, name, iotime);
     }
 }
 
@@ -1339,6 +1370,16 @@ void Deposition<TF>::get_tiled_mean(
         fld_veg  = deposition_tiles.at("veg").csoil_out.data();
         fld_soil = deposition_tiles.at("soil").csoil_out.data();
         fld_wet  = deposition_tiles.at("wet").csoil_out.data();
+    }
+    else if (name == "rc_tot") {
+        fld_veg  = deposition_tiles.at("veg").rc_tot.data();
+        fld_soil = deposition_tiles.at("soil").rc_tot.data();
+        fld_wet  = deposition_tiles.at("wet").rc_tot.data();
+    }
+    else if (name == "rc_eff") {
+        fld_veg  = deposition_tiles.at("veg").rc_eff.data();
+        fld_soil = deposition_tiles.at("soil").rc_eff.data();
+        fld_wet  = deposition_tiles.at("wet").rc_eff.data();
     }
     else
         throw std::runtime_error("Cannot calculate tiled mean for variable \"" + name + "\"\\n");
