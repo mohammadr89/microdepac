@@ -38,6 +38,8 @@ struct Deposition_tile
     std::vector<TF> cw_out;   // External leaf compensation point (ug/m3)
     std::vector<TF> cstom_out; // Stomatal compensation point (ug/m3)
     std::vector<TF> csoil_out; // Soil compensation point (ug/m3)
+    std::vector<TF> rc_tot;   // Total canopy resistance (s/m)
+    std::vector<TF> rc_eff;   // Effective canopy resistance (s/m)
 };
 
 template<typename TF>
@@ -147,5 +149,7 @@ private:
     std::vector<TF> cw_out_mean;   // Grid-mean external leaf compensation point
     std::vector<TF> cstom_out_mean; // Grid-mean stomatal compensation point
     std::vector<TF> csoil_out_mean; // Grid-mean soil compensation point
+    std::vector<TF> rc_tot_mean;   // Grid-mean total canopy resistance
+    std::vector<TF> rc_eff_mean;   // Grid-mean effective canopy resistance
 };
 #endif
