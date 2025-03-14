@@ -1,0 +1,531 @@
+/* 
+ * This code has been modified to handle only NH3 deposition calculations.
+ * All other chemical species (O3, NO, NO2, HNO3, H2O2, ROOH, HCHO) have been removed.
+ * 
+ * Original species order was:
+ * [0] = O3
+ * [1] = NO   
+ * [2] = NO2
+ * [3] = HNO3
+ * [4] = H2O2
+ * [5] = ROOH
+ * [6] = HCHO
+ *
+ * Modified version now only contains:
+ * [0] = NH3
+ */
+/*
+ * MicroHH
+ * Copyright (c) 2011-2020 Chiel van Heerwaarden
+ * Copyright (c) 2011-2020 Thijs Heus
+ * Copyright (c) 2014-2020 Bart van Stratum
+ *
+ * This file is part of MicroHH
+ *
+ * MicroHH is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+
+ * MicroHH is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+
+ * You should have received a copy of the GNU General Public License
+ * along with MicroHH.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+//#include <cstdio>
+#include <cstdio>
+#include <iostream>
+#include <sstream>
+#include <algorithm>
+#include <math.h>
+#include <iomanip>
+#include <utility>
+#include "master.h"
+#include "grid.h"
+#include "fields.h"
+#include "thermo.h"
+#include "stats.h"
+#include "netcdf_interface.h"
+#include "constants.h"
+#include "timeloop.h"
+#include "deposition.h"
+#include "boundary_surface_lsm.h"
+#include "boundary.h"
+#include "cross.h"
+
+
+namespace
+{
+    template<typename TF>
+    void calc_tiled_mean(
+            TF* const restrict fld,
+            const TF* const restrict f_veg,
+            const TF* const restrict f_soil,
+            const TF* const restrict f_wet,
+            const TF* const restrict fld_veg,
+            const TF* const restrict fld_soil,
+            const TF* const restrict fld_wet,
+            const TF fac,
+            const int istart, const int iend,
+            const int jstart, const int jend,
+            const int icells)
+    {
+        for (int j=jstart; j<jend; ++j)
+            #pragma ivdep
+            for (int i=istart; i<iend; ++i)
+            {
+                const int ij  = i + j*icells;
+
+                fld[ij] = (
+                    f_veg [ij] * fld_veg [ij] +
+                    f_soil[ij] * fld_soil[ij] +
+                    f_wet [ij] * fld_wet [ij] ) * fac;
+            }
+    }
+
+
+    template<typename TF>
+    void calc_spatial_avg_deposition(
+            TF* const restrict fld,
+            const int istart, const int iend,
+            const int jstart, const int jend,
+            const int icells)
+    {
+        //Calculate sum and count
+        TF n_dep = (TF)0.0;
+        TF sum_dep = (TF)0.0;
+
+        for (int j=jstart; j<jend; ++j)
+            #pragma ivdep
+            for (int i=istart; i<iend; ++i)
+            {
+                const int ij = i + j*icells;
+
+                sum_dep += fld[ij];
+                n_dep += 1.0;
+            }
+
+        // Calculate average
+        TF avg_dep = sum_dep / n_dep;
+
+        for (int j=jstart; j<jend; ++j)
+            #pragma ivdep
+            for (int i=istart; i<iend; ++i)
+            {
+                const int ij = i + j*icells;
+
+                fld[ij] = avg_dep;
+            }
+    }
+
+
+    template<typename TF>
+    void calc_vd_water(
+            TF* const restrict fld,
+            const TF* const restrict ra,
+            const TF* const restrict ustar,
+            const int* const restrict water_mask,
+            const TF diff_scl,
+            const TF rwat,
+            const int istart, const int iend,
+            const int jstart, const int jend,
+            const int icells)
+    {
+    for (int j=jstart; j<jend; ++j)
+        #pragma ivdep
+        for (int i=istart; i<iend; ++i)
+        {
+
+            const int ij = i + j*icells;
+
+            if (water_mask[ij] == 1)
+            {
+                const TF ckarman = 0.4;
+                const TF rb = (TF)1.0 / (ckarman * ustar[ij]) * diff_scl;
+
+                fld[ij] = (TF)1.0 / (ra[ij] + rb + rwat);
+            }
+
+        }
+
+    }
+
+    template<typename TF>
+    void calc_deposition_per_tile(
+        const std::basic_string<char> lu_type,
+        TF* restrict vdnh3,
+        const TF* const restrict lai,
+        const TF* const restrict c_veg,
+        const TF* const restrict rs,
+        const TF* const restrict rs_veg,
+        const TF* const restrict ra,
+        const TF* const restrict ustar,
+        const TF* const restrict fraction,
+        const TF* const restrict rmes,
+        const TF* const restrict rsoil,
+        const TF* const restrict rcut,
+        const TF* const restrict rws,
+        const TF* const restrict rwat,
+        const TF* const restrict diff_scl,
+        const int istart, const int iend,
+        const int jstart, const int jend,
+        const int jj)
+    {
+
+        const int ntrac_vd = 1;
+        const TF ckarman = (TF)0.4;
+        const TF hc = (TF)10.0; // constant for now...
+
+        if (lu_type == "veg")
+        {
+
+            // Note: I think memory-wise it's more efficient to first loop over ij and then over species,
+            // because otherwise rb and rc vectors must be allocated for the entire grid instead of for
+            // the number of tracers. Also, it avoids the use of if statements (e.g. "if (t==0) vdnh3[ij] = ...")
+            std::vector<TF> rmes_local = {rmes[0]};
+            std::vector<TF> rb(ntrac_vd, (TF)0.0);
+            std::vector<TF> rc(ntrac_vd, (TF)0.0);
+
+            for (int j=jstart; j<jend; ++j)
+                for (int i=istart; i<iend; ++i) {
+
+                    const int ij = i + j*jj;
+
+                    //Do not proceed in loop if tile fraction is small
+                    if (fraction[ij] < (TF)1e-12)
+                        continue;
+
+                    //rmes for NO and NO2 requires multiplication with rs, according to Ganzeveld et al. (1995)
+                    const TF ra_inc = (TF)14. * hc * lai[ij] / ustar[ij];
+
+                    for (int t=0; t<ntrac_vd; ++t)
+                    {
+                        rb[t] = TF(2.0) / (ckarman * ustar[ij]) * diff_scl[t];
+                        rc[t] = TF(1.0) / ((TF)1.0 / (diff_scl[t] + rs[ij] + rmes_local[t]) + (TF)1.0 / rcut[t] + (TF)1.0 / (ra_inc + rsoil[t]));
+                    }
+
+                    vdnh3[ij]   = (TF)1.0 / (ra[ij] + rb[0] + rc[0]);
+                }
+
+        }
+        else if (lu_type == "soil")
+        {
+            std::vector<TF> rb(ntrac_vd, (TF)0.0);
+
+            for (int j=jstart; j<jend; ++j)
+                for (int i=istart; i<iend; ++i) {
+
+                    const int ij = i + j*jj;
+
+                    //Do not proceed in loop if tile fraction is small
+                    if (fraction[ij] < (TF)1e-12) continue;
+
+                    for (int t=0; t<ntrac_vd; ++t)
+                    {
+                        rb[t] = (TF)1.0 / (ckarman * ustar[ij]) * diff_scl[t];
+                    }
+
+                    vdnh3[ij]   = (TF)1.0 / (ra[ij] + rb[0] + rsoil[0]);
+                }
+        }
+        else if (lu_type == "wet")
+        {
+            std::vector<TF> rb_veg(ntrac_vd, (TF)0.0);
+            std::vector<TF> rb_soil(ntrac_vd, (TF)0.0);
+            std::vector<TF> rc(ntrac_vd, (TF)0.0);
+            std::vector<TF> rmes_local = {rmes[0]};
+
+            for (int j=jstart; j<jend; ++j)
+                for (int i=istart; i<iend; ++i)
+                {
+                    const int ij = i + j*jj;
+
+                    // Do not proceed in loop if tile fraction is small
+                    if (fraction[ij] < (TF)1e-12) continue;
+
+                    const TF ra_inc = (TF)14. * hc * lai[ij] / ustar[ij];
+
+                    //Note that in rc calculation, rcut is replaced by rws for calculating wet skin uptake
+                    for (int t=0; t<ntrac_vd; ++t)
+                    {
+                        rb_veg[t] = (TF)1.0 / (ckarman * ustar[ij]) * diff_scl[t];
+                        rb_soil[t] = (TF)1.0 / (ckarman * ustar[ij]) * diff_scl[t];
+                        rc[t] = TF(1.0) / ((TF)1.0 / (diff_scl[t] + rs_veg[ij] + rmes_local[t]) + (TF)1.0 / rws[t] + (TF)1.0 / (ra_inc + rsoil[t]));
+                    }
+
+                    // Calculate vd for wet skin tile as the weighted average of vd to wet soil and to wet vegetation
+                    vdnh3[ij]   = c_veg[ij] / (ra[ij] + rb_veg[0] + rc[0]) + ((TF)1.0 - c_veg[ij]) / (ra[ij] + rb_soil[0] + rsoil[0]);
+                }
+        }
+    }
+}
+
+template<typename TF>
+Deposition<TF>::Deposition(Master& masterin, Grid<TF>& gridin, Fields<TF>& fieldsin, Input& inputin) :
+    master(masterin), grid(gridin), fields(fieldsin)
+{
+    sw_deposition = inputin.get_item<bool>("deposition", "swdeposition", "", false);
+}
+
+
+template <typename TF>
+Deposition<TF>::~Deposition()
+{
+}
+
+
+template <typename TF>
+void Deposition<TF>::init(Input& inputin)
+{
+    // Always read the default deposition velocities. They are needed by 
+    // chemistry, even if deposition is disabled.
+    vd_nh3   = inputin.get_item<TF>("deposition", "vdnh3", "", (TF)0.0);
+
+    if (!sw_deposition)
+        return;
+
+    auto& gd = grid.get_grid_data();
+
+    // Create surface tiles for deposition:
+    for (auto& name : deposition_tile_names)
+        deposition_tiles.emplace(name, Deposition_tile<TF>{});
+
+    for (auto& tile : deposition_tiles)
+    {
+        tile.second.vdnh3.resize(gd.ijcells);
+    }
+
+    deposition_tiles.at("veg" ).long_name = "vegetation";
+    deposition_tiles.at("soil").long_name = "bare soil";
+    deposition_tiles.at("wet" ).long_name = "wet skin";
+    deposition_var = inputin.get_item<TF>("deposition", "deposition_var","", (TF)1e5);
+
+    henry_so2 = inputin.get_item<TF>("deposition", "henry_so2", "", (TF)1e5);
+    rsoil_so2 = inputin.get_item<TF>("deposition", "rsoil_so2", "", (TF)250.0);
+    rwat_so2 = inputin.get_item<TF>("deposition", "rwat_so2", "", (TF)1.0);
+    rws_so2 = inputin.get_item<TF>("deposition", "rws_so2", "", (TF)100.0);
+
+    //  Some parameters tailored for NH3 according to DEPAC
+    //rmes     = {(TF)1.0};
+    rmes     = {(TF)0.0}; // No mesophyllic resistance used for NH3 in DEPAC
+    //rsoil    = {(TF)400.0};
+    rsoil    = {(TF)100.0}; // From rsoil array in depac_lu.inc for NH3
+    rcut     = {(TF)1e5};
+    rws      = {(TF)2000.0};
+    rwat     = {(TF)2000.0};
+    //diff     = {(TF)0.13};
+    diff     = {(TF)0.259};// From rsoil array in depac_lu.inc for NH3
+    diff_scl = {(TF)1.6};
+    //henry    = {(TF)0.01};
+    henry    = {(TF)1.0e4}; // Based on hlaw constant in depac_lu.inc
+    f0       = {(TF)1.0};
+
+    // Change diff_scl to diff_scl^(2/3) for use in rb calculation
+    diff_scl[0] = pow(diff_scl[0], (TF)2.0/(TF)3.0);
+
+    for (auto& tile : deposition_tiles)
+    {
+        std::fill(tile.second.vdnh3.begin(),tile.second.vdnh3.end(), vd_nh3);
+    }
+}
+
+
+template <typename TF>
+void Deposition<TF>::create(Stats<TF>& stats, Cross<TF>& cross)
+{
+    if (!sw_deposition)
+        return;
+
+    // add cross-sections
+    if (cross.get_switch())
+    {
+        std::vector<std::string> allowed_crossvars = {
+                "vdnh3_soil", 
+                "vdnh3_wet", 
+                "vdnh3_veg"};
+        cross_list = cross.get_enabled_variables(allowed_crossvars);
+    }
+}
+
+
+template <typename TF>
+void Deposition<TF>::update_time_dependent(
+        Timeloop<TF>& timeloop,
+        Boundary<TF>& boundary,
+        TF* restrict vdnh3)
+{
+    if (!sw_deposition)
+        return;
+
+    auto& gd = grid.get_grid_data();
+
+    // get information from lsm:
+    auto& tiles = boundary.get_tiles();
+    auto& lai = boundary.get_lai();
+    auto& water_mask = boundary.get_water_mask();
+    auto& c_veg = boundary.get_c_veg();
+
+    // calculate deposition per tile:
+    for (auto& tile : tiles)
+    {
+        calc_deposition_per_tile(
+                tile.first,
+                deposition_tiles.at(tile.first).vdnh3.data(),
+                lai.data(),
+                c_veg.data(),
+                tile.second.rs.data(),
+                tiles.at("veg").rs.data(),
+                tile.second.ra.data(),
+                tile.second.ustar.data(),
+                tile.second.fraction.data(),
+                rmes.data(), rsoil.data(), rcut.data(),
+                rws.data(), rwat.data(), diff_scl.data(),   // pass as constant....
+                gd.istart, gd.iend,
+                gd.jstart, gd.jend,
+                gd.icells);
+    }
+
+    // Calculate tile-mean deposition for chemistry
+    get_tiled_mean(vdnh3,"nh3",(TF) 1.0,tiles.at("veg").fraction.data(), tiles.at("soil").fraction.data(), tiles.at("wet").fraction.data());
+
+    // cmk: we use the wet-tile info for u* and ra, since these are calculated in lsm with f_wet = 100%
+    update_vd_water(vdnh3,"nh3",tiles.at("wet").ra.data(),tiles.at("wet").ustar.data(),water_mask.data(),diff_scl.data(),rwat.data());
+
+   // spatial_avg_vd(vdnh3);
+
+}
+
+
+template<typename TF>
+void Deposition<TF>::exec_cross(Cross<TF>& cross, unsigned long iotime)
+{
+    if (!sw_deposition)
+        return;
+
+    auto& gd = grid.get_grid_data();
+
+    const TF no_offset = TF(0);
+
+    for (auto& name : cross_list)
+    {
+        if (name == "vdnh3_veg")
+            cross.cross_plane(deposition_tiles.at("veg").vdnh3.data(), no_offset, name, iotime);
+        else if (name == "vdnh3_soil")
+            cross.cross_plane(deposition_tiles.at("soil").vdnh3.data(), no_offset, name, iotime);
+        else if (name == "vdnh3_wet")
+            cross.cross_plane(deposition_tiles.at("wet").vdnh3.data(), no_offset, name, iotime);
+    }
+}
+
+
+template<typename TF>
+const TF Deposition<TF>::get_vd(const std::string& name) const
+{
+    if (name == "nh3")
+        return vd_nh3;
+    else
+    {
+        std::string error = "Deposition::get_vd() can't return \"" + name + "\"";
+        throw std::runtime_error(error);
+    }
+}
+
+
+template<typename TF>
+void Deposition<TF>::get_tiled_mean(
+    TF* restrict fld_out, std::string name, const TF fac,
+    const TF* const restrict fveg,
+    const TF* const restrict fsoil,
+    const TF* const restrict fwet)
+{
+    auto& gd = grid.get_grid_data();
+
+    TF* fld_veg;
+    TF* fld_soil;
+    TF* fld_wet;
+
+    // Yikes..
+    if (name == "nh3")
+    {
+        fld_veg  = deposition_tiles.at("veg").vdnh3.data();
+        fld_soil = deposition_tiles.at("soil").vdnh3.data();
+        fld_wet  = deposition_tiles.at("wet").vdnh3.data();
+    }
+    else
+        throw std::runtime_error("Cannot calculate tiled mean for variable \"" + name + "\"\\n");
+
+    calc_tiled_mean(
+            fld_out,
+            fveg,
+            fsoil,
+            fwet,
+            fld_veg,
+            fld_soil,
+            fld_wet,
+            fac,
+            gd.istart, gd.iend,
+            gd.jstart, gd.jend,
+            gd.icells);
+}
+
+
+template<typename TF>
+void Deposition<TF>::update_vd_water(
+        TF* restrict fld_out, std::string name,
+        const TF* const restrict ra,
+        const TF* const restrict ustar,
+        const int* const restrict water_mask,
+        const TF* const restrict diff_scl,
+        const TF* const restrict rwat)
+{
+    auto& gd = grid.get_grid_data();
+
+    // TF* fld;
+    TF diff_scl_val;
+    TF rwat_val;
+
+    // Yikes...
+    if (name == "nh3")
+    {
+        // fld = vd_nh3.data();
+        diff_scl_val = diff_scl[0];
+        rwat_val = rwat[0];
+    }
+    else
+        throw std::runtime_error("Cannot update vd to water for variable \"" + name + "\"\\n");
+
+    calc_vd_water(
+        fld_out,
+        ra,
+        ustar,
+        water_mask,
+        diff_scl_val,
+        rwat_val,
+        gd.istart, gd.iend,
+        gd.jstart, gd.jend,
+        gd.icells);
+}
+
+
+template<typename TF>
+void Deposition<TF>::spatial_avg_vd(
+    TF* restrict fld_out)
+{
+    auto& gd = grid.get_grid_data();
+
+    calc_spatial_avg_deposition(
+        fld_out,
+        gd.istart, gd.iend,
+        gd.jstart, gd.jend,
+        gd.icells);
+
+}
+
+
+template class Deposition<double>;
+//:template class Chemistry<float>;
+
