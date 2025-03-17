@@ -205,7 +205,116 @@ namespace {
         }
 
     template<typename TF>
-        void calc_deposition_per_tile(
+    void calc_deposition_per_tile_orig(
+        const std::basic_string<char> lu_type,
+        TF* restrict vdnh3,
+        const TF* const restrict lai,
+        const TF* const restrict c_veg,
+        const TF* const restrict rs,
+        const TF* const restrict rs_veg,
+        const TF* const restrict ra,
+        const TF* const restrict ustar,
+        const TF* const restrict fraction,
+        const TF* const restrict rmes,
+        const TF* const restrict rsoil,
+        const TF* const restrict rcut,
+        const TF* const restrict rws,
+        const TF* const restrict rwat,
+        const TF* const restrict diff_scl,
+        const int istart, const int iend,
+        const int jstart, const int jend,
+        const int jj)
+    {
+
+        const int ntrac_vd = 1;
+        const TF ckarman = (TF)0.4;
+        const TF hc = (TF)10.0; // constant for now...
+
+        if (lu_type == "veg")
+        {
+
+            // Note: I think memory-wise it's more efficient to first loop over ij and then over species,
+            // because otherwise rb and rc vectors must be allocated for the entire grid instead of for
+            // the number of tracers. Also, it avoids the use of if statements (e.g. "if (t==0) vdnh3[ij] = ...")
+            std::vector<TF> rmes_local = {rmes[0]};
+            std::vector<TF> rb(ntrac_vd, (TF)0.0);
+            std::vector<TF> rc(ntrac_vd, (TF)0.0);
+
+            for (int j=jstart; j<jend; ++j)
+                for (int i=istart; i<iend; ++i) {
+
+                    const int ij = i + j*jj;
+
+                    //Do not proceed in loop if tile fraction is small
+                    if (fraction[ij] < (TF)1e-12)
+                        continue;
+
+                    //rmes for NO and NO2 requires multiplication with rs, according to Ganzeveld et al. (1995)
+                    const TF ra_inc = (TF)14. * hc * lai[ij] / ustar[ij];
+
+                    for (int t=0; t<ntrac_vd; ++t)
+                    {
+                        rb[t] = TF(2.0) / (ckarman * ustar[ij]) * diff_scl[t];
+                        rc[t] = TF(1.0) / ((TF)1.0 / (diff_scl[t] + rs[ij] + rmes_local[t]) + (TF)1.0 / rcut[t] + (TF)1.0 / (ra_inc + rsoil[t]));
+                    }
+
+                    vdnh3[ij]   = (TF)1.0 / (ra[ij] + rb[0] + rc[0]);
+                }
+
+        }
+        else if (lu_type == "soil")
+        {
+            std::vector<TF> rb(ntrac_vd, (TF)0.0);
+
+            for (int j=jstart; j<jend; ++j)
+                for (int i=istart; i<iend; ++i) {
+
+                    const int ij = i + j*jj;
+
+                    //Do not proceed in loop if tile fraction is small
+                    if (fraction[ij] < (TF)1e-12) continue;
+
+                    for (int t=0; t<ntrac_vd; ++t)
+                    {
+                        rb[t] = (TF)1.0 / (ckarman * ustar[ij]) * diff_scl[t];
+                    }
+
+                    vdnh3[ij]   = (TF)1.0 / (ra[ij] + rb[0] + rsoil[0]);
+                }
+        }
+        else if (lu_type == "wet")
+        {
+            std::vector<TF> rb_veg(ntrac_vd, (TF)0.0);
+            std::vector<TF> rb_soil(ntrac_vd, (TF)0.0);
+            std::vector<TF> rc(ntrac_vd, (TF)0.0);
+            std::vector<TF> rmes_local = {rmes[0]};
+
+            for (int j=jstart; j<jend; ++j)
+                for (int i=istart; i<iend; ++i)
+                {
+                    const int ij = i + j*jj;
+
+                    // Do not proceed in loop if tile fraction is small
+                    if (fraction[ij] < (TF)1e-12) continue;
+
+                    const TF ra_inc = (TF)14. * hc * lai[ij] / ustar[ij];
+
+                    //Note that in rc calculation, rcut is replaced by rws for calculating wet skin uptake
+                    for (int t=0; t<ntrac_vd; ++t)
+                    {
+                        rb_veg[t] = (TF)1.0 / (ckarman * ustar[ij]) * diff_scl[t];
+                        rb_soil[t] = (TF)1.0 / (ckarman * ustar[ij]) * diff_scl[t];
+                        rc[t] = TF(1.0) / ((TF)1.0 / (diff_scl[t] + rs_veg[ij] + rmes_local[t]) + (TF)1.0 / rws[t] + (TF)1.0 / (ra_inc + rsoil[t]));
+                    }
+
+                    // Calculate vd for wet skin tile as the weighted average of vd to wet soil and to wet vegetation
+                    vdnh3[ij]   = c_veg[ij] / (ra[ij] + rb_veg[0] + rc[0]) + ((TF)1.0 - c_veg[ij]) / (ra[ij] + rb_soil[0] + rsoil[0]);
+                }
+        }
+    }
+
+    template<typename TF>
+    void calc_deposition_per_tile_depac(
                 Master& master,           // Add Master reference as parameter
                 const std::string lu_type,
                 TF* restrict vdnh3,              // Output: NH3 deposition velocity
@@ -695,6 +804,116 @@ namespace {
                             }
                     }
                 }
+
+
+    template<typename TF>
+    void calc_deposition_per_tile(
+            Master& master,
+            const std::string lu_type,
+            TF* restrict vdnh3,
+            const TF* const restrict lai,
+            const TF* const restrict c_veg,
+            const TF* const restrict rs,
+            const TF* const restrict rs_veg,
+            const TF* const restrict ra,
+            const TF* const restrict ustar,
+            const TF* const restrict fraction,
+            const TF* const restrict nh3_concentration,
+            const TF* const restrict rmes,
+            const TF* const restrict rsoil,
+            const TF* const restrict rcut,
+            const TF* const restrict rws,
+            const TF* const restrict rwat,
+            const TF* const restrict diff_scl,
+            const TF* const restrict rho,
+            const bool use_depac,  // Switch parameter
+            // DEPAC-specific parameters below (only used when use_depac is true)
+            const TF glrad,
+            const TF sinphi,
+            const TF temperature,
+            const TF rh,
+            const TF sai,
+            const TF lat,
+            const int day_of_year,
+            const int nwet,
+            const int lu,
+            const int iratns,
+            const TF hlaw,
+            const TF react,
+            const TF c_ave_prev_nh3,
+            const TF catm,
+            const TF pressure,
+            const bool sw_override_ccomp,
+            const TF ccomp_override_value,
+            Deposition_tile_map<TF>& deposition_tiles,
+            const int istart, const int iend,
+            const int jstart, const int jend,
+            const int jj,
+            const int kstart,
+            const int ijcells)
+    {
+        if (use_depac) {
+            // Use DEPAC model
+            calc_deposition_per_tile_depac(
+                    master,
+                    lu_type,
+                    vdnh3,
+                    lai,
+                    c_veg,
+                    rs,
+                    rs_veg,
+                    ra,
+                    ustar,
+                    fraction,
+                    nh3_concentration,
+                    diff_scl,
+                    rho,
+                    glrad,
+                    sinphi,
+                    temperature,
+                    rh,
+                    sai,
+                    lat,
+                    day_of_year,
+                    nwet,
+                    lu,
+                    iratns,
+                    hlaw,
+                    react,
+                    c_ave_prev_nh3,
+                    catm,
+                    pressure,
+                    sw_override_ccomp,
+                    ccomp_override_value,
+                    deposition_tiles,
+                    istart, iend,
+                    jstart, jend,
+                    jj,
+                    kstart,
+                    ijcells);
+        } else {
+            // Use original model
+            calc_deposition_per_tile_orig(
+                    lu_type,
+                    vdnh3,
+                    lai,
+                    c_veg,
+                    rs,
+                    rs_veg,
+                    ra,
+                    ustar,
+                    fraction,
+                    rmes,
+                    rsoil,
+                    rcut,
+                    rws,
+                    rwat,
+                    diff_scl,
+                    istart, iend,
+                    jstart, jend,
+                    jj);
+        }
+    }
 }
 
 
@@ -704,6 +923,17 @@ Deposition<TF>::Deposition(Master& masterin, Grid<TF>& gridin, Fields<TF>& field
     master(masterin), grid(gridin), fields(fieldsin), radiation(radiationin)
 {
     sw_deposition = inputin.get_item<bool>("deposition", "swdeposition", "", false);
+
+    use_depac = inputin.get_item<bool>("deposition", "use_depac", "", true);  // Default to DEPAC
+
+    // Log which mode is being used
+    if (sw_deposition) {
+        if (use_depac) {
+            master.print_message("Deposition: Using DEPAC model for NH3 deposition\n");
+        } else {
+            master.print_message("Deposition: Using original model for NH3 deposition\n");
+        }
+    }
 
     // Added: Initialize DEPAC parameters for NH3 deposition
 
@@ -789,29 +1019,32 @@ void Deposition<TF>::init(Input& inputin)
         tile.second.ra.resize(gd.ijcells);
         tile.second.obuk.resize(gd.ijcells);
         tile.second.ustar.resize(gd.ijcells);
-        tile.second.ccomp_tot.resize(gd.ijcells);
-        tile.second.cw.resize(gd.ijcells);
-        tile.second.cstom.resize(gd.ijcells);
-        tile.second.csoil_eff.resize(gd.ijcells);
 
-        // Resize new compensation point arrays
-        tile.second.cw_out.resize(gd.ijcells);
-        tile.second.cstom_out.resize(gd.ijcells);
-        tile.second.csoil_out.resize(gd.ijcells);
-        tile.second.rc_tot.resize(gd.ijcells);
-        tile.second.rc_eff.resize(gd.ijcells);
+	if (use_depac){
+            tile.second.ccomp_tot.resize(gd.ijcells);
+            tile.second.cw.resize(gd.ijcells);
+            tile.second.cstom.resize(gd.ijcells);
+            tile.second.csoil_eff.resize(gd.ijcells);
+            tile.second.cw_out.resize(gd.ijcells);
+            tile.second.cstom_out.resize(gd.ijcells);
+            tile.second.csoil_out.resize(gd.ijcells);
+            tile.second.rc_tot.resize(gd.ijcells);
+            tile.second.rc_eff.resize(gd.ijcells);
+	}
     }
     // Initialize grid-mean arrays
     ra_mean.resize(gd.ijcells);
-    ccomp_mean.resize(gd.ijcells);
-    cw_mean.resize(gd.ijcells);
-    cstom_mean.resize(gd.ijcells);
-    csoil_eff_mean.resize(gd.ijcells);
-    cw_out_mean.resize(gd.ijcells);
-    cstom_out_mean.resize(gd.ijcells);
-    csoil_out_mean.resize(gd.ijcells);
-    rc_tot_mean.resize(gd.ijcells);
-    rc_eff_mean.resize(gd.ijcells);
+    if (use_depac){
+        ccomp_mean.resize(gd.ijcells);
+        cw_mean.resize(gd.ijcells);
+        cstom_mean.resize(gd.ijcells);
+        csoil_eff_mean.resize(gd.ijcells);
+        cw_out_mean.resize(gd.ijcells);
+        cstom_out_mean.resize(gd.ijcells);
+        csoil_out_mean.resize(gd.ijcells);
+        rc_tot_mean.resize(gd.ijcells);
+        rc_eff_mean.resize(gd.ijcells);
+    }
 
     deposition_tiles.at("veg" ).long_name = "vegetation";
     deposition_tiles.at("soil").long_name = "bare soil";
@@ -907,6 +1140,7 @@ void Deposition<TF>::create(Stats<TF>& stats, Cross<TF>& cross)
     }
 }
 
+
 template <typename TF>
 void Deposition<TF>::update_time_dependent(
         Timeloop<TF>& timeloop,
@@ -935,67 +1169,68 @@ void Deposition<TF>::update_time_dependent(
 
     const std::vector<TF>& rho = thermo.get_basestate_vector("rho");
 
-    // Get day of year from Timeloop
-    day_of_year = int(timeloop.calc_day_of_year());
+    // Only retrieve DEPAC-specific values if using DEPAC
+    if (use_depac) {
+        // Get day of year from Timeloop
+        day_of_year = int(timeloop.calc_day_of_year());
 
-    // Get latitude from Grid
-    lat = gd.lat;
+        // Get latitude from Grid
+        lat = gd.lat;
 
-    const int year = timeloop.get_year();
-    const TF seconds_after_midnight = TF(timeloop.calc_hour_of_day() * 3600);
-    TF azimuth;
+        const int year = timeloop.get_year();
+        const TF seconds_after_midnight = TF(timeloop.calc_hour_of_day() * 3600);
+        TF azimuth;
 
-    // Calculate sinphi using the radiation function
-    std::tie(sinphi, azimuth) = Radiation_rrtmgp_functions::calc_cos_zenith_angle(
-            lat, gd.lon, day_of_year, seconds_after_midnight, year);
+        // Calculate sinphi using the radiation function
+        std::tie(sinphi, azimuth) = Radiation_rrtmgp_functions::calc_cos_zenith_angle(
+                lat, gd.lon, day_of_year, seconds_after_midnight, year);
 
-    //master.print_message("DEBUG: Time step %f, Hour of day %f, sinphi (from radiation) = %f\n", 
-    //        timeloop.get_time(), 
-    //        timeloop.calc_hour_of_day(),
-    //        sinphi);
+        //master.print_message("DEBUG: Time step %f, Hour of day %f, sinphi (from radiation) = %f\n", 
+        //        timeloop.get_time(), 
+        //        timeloop.calc_hour_of_day(),
+        //        sinphi);
 
-    //master.print_message("DEBUG: About to access radiation, hour = %f\n", timeloop.calc_hour_of_day());
+        //master.print_message("DEBUG: About to access radiation, hour = %f\n", timeloop.calc_hour_of_day());
 
+        const Radiation_prescribed<TF>& radiation_prescribed = static_cast<const Radiation_prescribed<TF>&>(radiation);
 
-    const Radiation_prescribed<TF>& radiation_prescribed = static_cast<const Radiation_prescribed<TF>&>(radiation);
+        //master.print_message("DEBUG: About to access radiation, hour = %f\n", timeloop.calc_hour_of_day());
 
-    //master.print_message("DEBUG: About to access radiation, hour = %f\n", timeloop.calc_hour_of_day());
+        // Access the first element of the array
+        glrad = radiation_prescribed.get_sw_flux_dn()[0];  // Use index 0 to get the correct value
+                                                           //master.print_message("DEBUG: Using sw_flux_dn from radiation module as glrad: %f W/m2\n", glrad);
 
-    // Access the first element of the array
-    glrad = radiation_prescribed.get_sw_flux_dn()[0];  // Use index 0 to get the correct value
-                                                       //master.print_message("DEBUG: Using sw_flux_dn from radiation module as glrad: %f W/m2\n", glrad);
+                                                           ///  // Get RH from thermo and convert to %
+                                                           ///  auto tmp1 = fields.get_tmp();
+                                                           ///  thermo.get_thermo_field(*tmp1, "rh", true, false);
+                                                           ///  rh = tmp1->fld.data()[0] * 100.0;
+                                                           ///  fields.release_tmp(tmp1);
 
-                                                       ///  // Get RH from thermo and convert to %
-                                                       ///  auto tmp1 = fields.get_tmp();
-                                                       ///  thermo.get_thermo_field(*tmp1, "rh", true, false);
-                                                       ///  rh = tmp1->fld.data()[0] * 100.0;
-                                                       ///  fields.release_tmp(tmp1);
+                                                           ///  // Get temperature from thermo and convert to Celsius
+                                                           ///  auto tmp2 = fields.get_tmp();
+                                                           ///  thermo.get_thermo_field(*tmp2, "T", true, false);
+                                                           ///  temperature = tmp2->fld.data()[0];
+                                                           ///  fields.release_tmp(tmp2);
 
-                                                       ///  // Get temperature from thermo and convert to Celsius
-                                                       ///  auto tmp2 = fields.get_tmp();
-                                                       ///  thermo.get_thermo_field(*tmp2, "T", true, false);
-                                                       ///  temperature = tmp2->fld.data()[0];
-                                                       ///  fields.release_tmp(tmp2);
+                                                           ///  //// debug prints
+                                                           ///  //std::cout << "Temperature from MicroHH (K): " << temperature << std::endl;
+                                                           ///  //std::cout << "Temperature passed to DEPAC (C): " << temperature << std::endl;
 
-                                                       ///  //// debug prints
-                                                       ///  //std::cout << "Temperature from MicroHH (K): " << temperature << std::endl;
-                                                       ///  //std::cout << "Temperature passed to DEPAC (C): " << temperature << std::endl;
+        auto tmp2 = fields.get_tmp();
+        if (tmp2 && tmp2->fld.data()) {
+            thermo.get_thermo_field(*tmp2, "T", true, false);
+            // Get temperature at proper surface level
+            temperature = tmp2->fld.data()[gd.kstart*gd.ijcells];
+            fields.release_tmp(tmp2);
+        }
 
-
-    auto tmp2 = fields.get_tmp();
-    if (tmp2 && tmp2->fld.data()) {
-        thermo.get_thermo_field(*tmp2, "T", true, false);
-        // Get temperature at proper surface level
-        temperature = tmp2->fld.data()[gd.kstart*gd.ijcells];
-        fields.release_tmp(tmp2);
-    }
-
-    auto tmp1 = fields.get_tmp();
-    if (tmp1 && tmp1->fld.data()) {
-        thermo.get_thermo_field(*tmp1, "rh", true, false);
-        // Get RH at proper surface level
-        rh = tmp1->fld.data()[gd.kstart*gd.ijcells] * 100.0;
-        fields.release_tmp(tmp1);
+        auto tmp1 = fields.get_tmp();
+        if (tmp1 && tmp1->fld.data()) {
+            thermo.get_thermo_field(*tmp1, "rh", true, false);
+            // Get RH at proper surface level
+            rh = tmp1->fld.data()[gd.kstart*gd.ijcells] * 100.0;
+            fields.release_tmp(tmp1);
+        }
     }
 
     // get information from lsm:
@@ -1041,10 +1276,14 @@ void Deposition<TF>::update_time_dependent(
                 tile.second.ustar.data(),
                 tile.second.fraction.data(),
                 fields.sp.at("nh3")->fld.data(),  // Pass NH3 concentration directly from Fields
-                                                  //rmes.data(), rsoil.data(), rcut.data(),
-                                                  //rws.data(), rwat.data(),
+                rmes.data(), 
+                rsoil.data(), 
+                rcut.data(),
+                rws.data(), 
+                rwat.data(),
                 diff_scl.data(),   
                 rho.data(),
+                use_depac,  // Add the switch parameter
                 // Added: DEPAC parameters
                 glrad,          // Now using calculated time-dependent radiation
                 sinphi,         // Sine of solar elevation
@@ -1069,7 +1308,6 @@ void Deposition<TF>::update_time_dependent(
                 gd.icells,
                 gd.kstart,           // Added this
                 gd.ijcells);         // added this
-
     }
 
     // Calculate tile-mean deposition for chemistry
@@ -1082,19 +1320,23 @@ void Deposition<TF>::update_time_dependent(
     // get_tiled_mean(vdhcho,"hcho",(TF) 1.0,tiles.at("veg").fraction.data(), tiles.at("soil").fraction.data(), tiles.at("wet").fraction.data());
     get_tiled_mean(vdnh3,"nh3",(TF) 1.0,tiles.at("veg").fraction.data(), tiles.at("soil").fraction.data(), tiles.at("wet").fraction.data());  // Added NH3
 
-    get_tiled_mean(ra_mean.data(), "ra", (TF)1.0, tiles.at("veg").fraction.data(), tiles.at("soil").fraction.data(), tiles.at("wet").fraction.data());
-    get_tiled_mean(ccomp_mean.data(), "ccomp_tot", (TF)1.0, tiles.at("veg").fraction.data(), tiles.at("soil").fraction.data(), tiles.at("wet").fraction.data());
+    // Only calculate DEPAC-specific means if using DEPAC
+    if (use_depac) {
+        get_tiled_mean(ra_mean.data(), "ra", (TF)1.0, tiles.at("veg").fraction.data(), tiles.at("soil").fraction.data(), tiles.at("wet").fraction.data());
+        get_tiled_mean(ccomp_mean.data(), "ccomp_tot", (TF)1.0, tiles.at("veg").fraction.data(), tiles.at("soil").fraction.data(), tiles.at("wet").fraction.data());
 
-    get_tiled_mean(cw_mean.data(), "cw", (TF)1.0, tiles.at("veg").fraction.data(), tiles.at("soil").fraction.data(), tiles.at("wet").fraction.data());
-    get_tiled_mean(cstom_mean.data(), "cstom", (TF)1.0, tiles.at("veg").fraction.data(), tiles.at("soil").fraction.data(), tiles.at("wet").fraction.data());
-    get_tiled_mean(csoil_eff_mean.data(), "csoil_eff", (TF)1.0, tiles.at("veg").fraction.data(), tiles.at("soil").fraction.data(), tiles.at("wet").fraction.data());
+        get_tiled_mean(cw_mean.data(), "cw", (TF)1.0, tiles.at("veg").fraction.data(), tiles.at("soil").fraction.data(), tiles.at("wet").fraction.data());
+        get_tiled_mean(cstom_mean.data(), "cstom", (TF)1.0, tiles.at("veg").fraction.data(), tiles.at("soil").fraction.data(), tiles.at("wet").fraction.data());
+        get_tiled_mean(csoil_eff_mean.data(), "csoil_eff", (TF)1.0, tiles.at("veg").fraction.data(), tiles.at("soil").fraction.data(), tiles.at("wet").fraction.data());
 
-    // Added: Calculate grid-mean values for compensation points
-    get_tiled_mean(cw_out_mean.data(), "cw_out", (TF)1.0, tiles.at("veg").fraction.data(), tiles.at("soil").fraction.data(), tiles.at("wet").fraction.data());
-    get_tiled_mean(cstom_out_mean.data(), "cstom_out", (TF)1.0, tiles.at("veg").fraction.data(), tiles.at("soil").fraction.data(), tiles.at("wet").fraction.data());
-    get_tiled_mean(csoil_out_mean.data(), "csoil_out", (TF)1.0, tiles.at("veg").fraction.data(), tiles.at("soil").fraction.data(), tiles.at("wet").fraction.data());
-    get_tiled_mean(rc_tot_mean.data(), "rc_tot", (TF)1.0, tiles.at("veg").fraction.data(), tiles.at("soil").fraction.data(), tiles.at("wet").fraction.data());
-    get_tiled_mean(rc_eff_mean.data(), "rc_eff", (TF)1.0, tiles.at("veg").fraction.data(), tiles.at("soil").fraction.data(), tiles.at("wet").fraction.data());
+        // Added: Calculate grid-mean values for compensation points
+        get_tiled_mean(cw_out_mean.data(), "cw_out", (TF)1.0, tiles.at("veg").fraction.data(), tiles.at("soil").fraction.data(), tiles.at("wet").fraction.data());
+        get_tiled_mean(cstom_out_mean.data(), "cstom_out", (TF)1.0, tiles.at("veg").fraction.data(), tiles.at("soil").fraction.data(), tiles.at("wet").fraction.data());
+        get_tiled_mean(csoil_out_mean.data(), "csoil_out", (TF)1.0, tiles.at("veg").fraction.data(), tiles.at("soil").fraction.data(), tiles.at("wet").fraction.data());
+        get_tiled_mean(rc_tot_mean.data(), "rc_tot", (TF)1.0, tiles.at("veg").fraction.data(), tiles.at("soil").fraction.data(), tiles.at("wet").fraction.data());
+        get_tiled_mean(rc_eff_mean.data(), "rc_eff", (TF)1.0, tiles.at("veg").fraction.data(), tiles.at("soil").fraction.data(), tiles.at("wet").fraction.data());
+    }
+
     // cmk: we use the wet-tile info for u* and ra, since these are calculated in lsm with f_wet = 100%
     // update_vd_water(vdo3,"o3",tiles.at("wet").ra.data(),tiles.at("wet").ustar.data(),water_mask.data(),diff_scl.data(),rwat.data());
     // update_vd_water(vdno,"no",tiles.at("wet").ra.data(),tiles.at("wet").ustar.data(),water_mask.data(),diff_scl.data(),rwat.data());
@@ -1115,7 +1357,8 @@ void Deposition<TF>::update_time_dependent(
     // spatial_avg_vd(vdnh3);  // Added NH3
 }
 
-    template<typename TF>
+
+template<typename TF>
 void Deposition<TF>::exec_cross(Cross<TF>& cross, unsigned long iotime)
 {
     if (!sw_deposition)
@@ -1195,44 +1438,47 @@ void Deposition<TF>::exec_cross(Cross<TF>& cross, unsigned long iotime)
         //    cross.cross_plane(deposition_tiles.at("wet").ustar.data(), no_offset, name, iotime);
         else if (name == "ra")
             cross.cross_plane(ra_mean.data(), no_offset, name, iotime);
-        else if (name == "ccomp_tot")
-            cross.cross_plane(ccomp_mean.data(), no_offset, name, iotime);
-        else if (name == "ccomp_tot_veg")
-            cross.cross_plane(deposition_tiles.at("veg").ccomp_tot.data(), no_offset, name, iotime);
-        else if (name == "ccomp_tot_soil")
-            cross.cross_plane(deposition_tiles.at("soil").ccomp_tot.data(), no_offset, name, iotime);
-        else if (name == "ccomp_tot_wet")
-            cross.cross_plane(deposition_tiles.at("wet").ccomp_tot.data(), no_offset, name, iotime);
-        else if (name == "cw")
-            cross.cross_plane(cw_mean.data(), no_offset, name, iotime);
-        else if (name == "cstom")
-            cross.cross_plane(cstom_mean.data(), no_offset, name, iotime);
-        else if (name == "csoil_eff")
-            cross.cross_plane(csoil_eff_mean.data(), no_offset, name, iotime);
-        else if (name == "cw_out")
-            cross.cross_plane(cw_out_mean.data(), no_offset, name, iotime);
-        else if (name == "cstom_out")
-            cross.cross_plane(cstom_out_mean.data(), no_offset, name, iotime);
-        else if (name == "csoil_out")
-            cross.cross_plane(csoil_out_mean.data(), no_offset, name, iotime);
-        else if (name == "cw_veg")
-            cross.cross_plane(deposition_tiles.at("veg").cw.data(), no_offset, name, iotime);
-        else if (name == "rc_tot")
-            cross.cross_plane(rc_tot_mean.data(), no_offset, name, iotime);
-        else if (name == "rc_tot_veg")
-            cross.cross_plane(deposition_tiles.at("veg").rc_tot.data(), no_offset, name, iotime);
-        else if (name == "rc_tot_soil")
-            cross.cross_plane(deposition_tiles.at("soil").rc_tot.data(), no_offset, name, iotime);
-        else if (name == "rc_tot_wet")
-            cross.cross_plane(deposition_tiles.at("wet").rc_tot.data(), no_offset, name, iotime);
-        else if (name == "rc_eff")
-            cross.cross_plane(rc_eff_mean.data(), no_offset, name, iotime);
-        else if (name == "rc_eff_veg")
-            cross.cross_plane(deposition_tiles.at("veg").rc_eff.data(), no_offset, name, iotime);
-        else if (name == "rc_eff_soil")
-            cross.cross_plane(deposition_tiles.at("soil").rc_eff.data(), no_offset, name, iotime);
-        else if (name == "rc_eff_wet")
-            cross.cross_plane(deposition_tiles.at("wet").rc_eff.data(), no_offset, name, iotime);
+
+       else if (use_depac) {
+            if (name == "ccomp_tot")
+                cross.cross_plane(ccomp_mean.data(), no_offset, name, iotime);
+            else if (name == "ccomp_tot_veg")
+                cross.cross_plane(deposition_tiles.at("veg").ccomp_tot.data(), no_offset, name, iotime);
+            else if (name == "ccomp_tot_soil")
+                cross.cross_plane(deposition_tiles.at("soil").ccomp_tot.data(), no_offset, name, iotime);
+            else if (name == "ccomp_tot_wet")
+                cross.cross_plane(deposition_tiles.at("wet").ccomp_tot.data(), no_offset, name, iotime);
+            else if (name == "cw")
+                cross.cross_plane(cw_mean.data(), no_offset, name, iotime);
+            else if (name == "cstom")
+                cross.cross_plane(cstom_mean.data(), no_offset, name, iotime);
+            else if (name == "csoil_eff")
+                cross.cross_plane(csoil_eff_mean.data(), no_offset, name, iotime);
+            else if (name == "cw_out")
+                cross.cross_plane(cw_out_mean.data(), no_offset, name, iotime);
+            else if (name == "cstom_out")
+                cross.cross_plane(cstom_out_mean.data(), no_offset, name, iotime);
+            else if (name == "csoil_out")
+                cross.cross_plane(csoil_out_mean.data(), no_offset, name, iotime);
+            else if (name == "cw_veg")
+                cross.cross_plane(deposition_tiles.at("veg").cw.data(), no_offset, name, iotime);
+            else if (name == "rc_tot")
+                cross.cross_plane(rc_tot_mean.data(), no_offset, name, iotime);
+            else if (name == "rc_tot_veg")
+                cross.cross_plane(deposition_tiles.at("veg").rc_tot.data(), no_offset, name, iotime);
+            else if (name == "rc_tot_soil")
+                cross.cross_plane(deposition_tiles.at("soil").rc_tot.data(), no_offset, name, iotime);
+            else if (name == "rc_tot_wet")
+                cross.cross_plane(deposition_tiles.at("wet").rc_tot.data(), no_offset, name, iotime);
+            else if (name == "rc_eff")
+                cross.cross_plane(rc_eff_mean.data(), no_offset, name, iotime);
+            else if (name == "rc_eff_veg")
+                cross.cross_plane(deposition_tiles.at("veg").rc_eff.data(), no_offset, name, iotime);
+            else if (name == "rc_eff_soil")
+                cross.cross_plane(deposition_tiles.at("soil").rc_eff.data(), no_offset, name, iotime);
+            else if (name == "rc_eff_wet")
+                cross.cross_plane(deposition_tiles.at("wet").rc_eff.data(), no_offset, name, iotime);
+       }
     }
 }
 

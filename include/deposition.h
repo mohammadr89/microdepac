@@ -76,6 +76,7 @@ private:
     Radiation<TF>& radiation; // Add radiation reference
 
     bool sw_deposition;
+    bool use_depac;          // Switch to toggle between original and DEPAC models
 
     std::shared_ptr<Boundary_surface_lsm<TF>> boundary_surface_lsm;
 
