@@ -1,14 +1,33 @@
 module depac_wrapper_test
        ! Note: the name of the module and the subroutine should not be the same (excluding _c)
        ! That's why I put _test at the end of module's name
- ! Import necessary components from iso_c_binding for C-Fortran interoperability
+ !==============================================================================
+ ! DEPAC Wrapper for MicroHH - Explanation of Compensation Point Handling
+ !==============================================================================
+ ! This wrapper provides two modes of operation:
+ !
+ ! 1. Normal Mode (use_input_ccomp = 0):
+ !    - DEPAC calculates all resistances, conductances, and compensation points
+ !    - All calculated values are returned to MicroHH unchanged
+ !
+ ! 2. Override Mode (use_input_ccomp = 1):
+ !    - The ccomp_tot value is provided by MicroHH (from ccomp_override_value)
+ !    - All individual compensation points (cw_out, cstom_out, csoil_out) are 
+ !      forced to ZERO regardless of the ccomp_tot value
+ !    - This allows for custom bidirectional exchange modeling with controlled
+ !      compensation points
+ !
+ ! The override mode is useful for:
+ !   - Traditional deposition-only models (all comp. points = 0)
+ !   - Testing specific compensation point values
+ !   - Implementing alternative bidirectional exchange models
+ !==============================================================================
+
  use, intrinsic :: iso_c_binding, only: c_char, c_int, c_float, c_null_char, c_bool
  use LE_DryDepos_Gas_DEPAC, only : DryDepos_Gas_DEPAC
  implicit none
 contains
- ! MODIFIED: Added parameter to accept ccomp_tot as input when needed and to use override values
- ! This wrapper allows MicroHH to either use DEPAC's calculated compensation points
- ! or to override them with user-provided values.
+ ! MODIFIED: Completely revised wrapper to handle compensation point overrides properly
  subroutine depac_wrapper_c(compnam, day_of_year, lat, t, ust, glrad, sinphi, rh, &
                             lai, sai, nwet, lu, iratns, &
                             rc_tot, ccomp_tot, hlaw, react, &
@@ -62,6 +81,7 @@ contains
    ! Local variables
    character(len=6) :: f_compnam
    real(c_float) :: original_ccomp
+   real(c_float) :: temp_cw_out, temp_cstom_out, temp_csoil_out
 
    ! Convert C string to Fortran string
    call c_f_string(compnam, f_compnam)
@@ -73,17 +93,22 @@ contains
    
    ! Always call DEPAC to calculate all variables (resistances, conductances, etc.)
    call DryDepos_Gas_DEPAC(f_compnam, day_of_year, lat, t, ust, glrad, sinphi, rh, &
-                           lai, sai, nwet, lu, iratns, &
-                           rc_tot, ccomp_tot, hlaw, react, &
-                           status, p=p, c_ave_prev_nh3=c_ave_prev_nh3, ra=ra, rb=rb, &
-                           catm=catm, rc_eff=rc_eff, &
-                           gw_out=gw_out, gstom_out=gstom_out, gsoil_eff_out=gsoil_eff_out, &
-                           cw_out=cw_out, cstom_out=cstom_out, csoil_out=csoil_out)
+                          lai, sai, nwet, lu, iratns, &
+                          rc_tot, ccomp_tot, hlaw, react, &
+                          status, p=p, c_ave_prev_nh3=c_ave_prev_nh3, ra=ra, rb=rb, &
+                          catm=catm, rc_eff=rc_eff, &
+                          gw_out=gw_out, gstom_out=gstom_out, gsoil_eff_out=gsoil_eff_out, &
+                          cw_out=temp_cw_out, cstom_out=temp_cstom_out, csoil_out=temp_csoil_out)
 
-   ! If we're using the input compensation point, restore it and recalculate rc_eff
+   ! CRITICAL CHANGE: Handle override mode more explicitly
    if (use_input_ccomp /= 0) then
      ! Restore the original ccomp_tot value that was passed in
      ccomp_tot = original_ccomp
+     
+     ! Force ALL individual compensation points to ZERO regardless of ccomp_tot value
+     cw_out = 0.0
+     cstom_out = 0.0
+     csoil_out = 0.0
      
      ! Special case: If ccomp_tot is zero (or very close to zero), set rc_eff = rc_tot
      ! This is for the traditional deposition-only model with no compensation point
@@ -101,6 +126,11 @@ contains
          rc_eff = ((ra + rb)*ccomp_tot + rc_tot*catm)/(catm-ccomp_tot)
        end if
      end if
+   else
+     ! If not using override mode, use the values calculated by DEPAC
+     cw_out = temp_cw_out
+     cstom_out = temp_cstom_out
+     csoil_out = temp_csoil_out
    end if
 
    ! Calculate effective soil resistance from conductance
