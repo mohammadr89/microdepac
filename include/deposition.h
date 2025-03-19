@@ -117,6 +117,9 @@ private:
     // Time and surface parameters
     int day_of_year;     // Day of year
     int nwet;            // Surface wetness indicator
+    int nwet_veg;
+    int nwet_soil;
+    int nwet_wet;
     int lu;              // Land use type
 
     // Chemical parameters
