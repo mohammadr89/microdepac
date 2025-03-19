@@ -336,6 +336,9 @@ namespace {
                 const TF lat,           // Latitude [degrees]
                 const int day_of_year,  // Day of year
                 const int nwet,         // Surface wetness
+    		const int nwet_veg,      // Add these three parameters
+    		const int nwet_soil,
+    		const int nwet_wet,
                 const int lu,           // Land use type
                 const int iratns,       // NH3 compensation point option
                 const TF hlaw,          // Henry's law constant
@@ -457,7 +460,7 @@ namespace {
                                         lai[ij],
                                         //sai,
                                         local_sai,        // CHANGED: Use calculated SAI
-                                        0,  // nwet = 0 for dry vegetation
+                                        nwet_veg,  // nwet = 0 for dry vegetation
                                             //lu,
                                         local_lu,         // CHANGED: Use LAI-determined land use type
                                         iratns,
@@ -563,7 +566,7 @@ namespace {
                                         rh,
                                         lai[ij],
                                         sai,
-                                        0,  // nwet = 0 for dry soil
+                                        nwet_soil,  // nwet = 0 for dry soil
                                         lu,
                                         iratns,
                                         &rc_tot,
@@ -681,7 +684,7 @@ namespace {
                                             lai[ij],
                                             //sai,
                                             local_sai,        // CHANGED: Use calculated SAI
-                                            1,  // nwet = 1 for wet conditions
+                                            nwet_wet,  // nwet = 1 for wet conditions
                                                 //lu,
                                             local_lu,         // CHANGED: Use LAI-determined land use type
                                             iratns,
@@ -751,7 +754,7 @@ namespace {
                                             rh,
                                             lai[ij],
                                             sai,
-                                            1,  // nwet = 1 for wet conditions
+                                            nwet_wet,  // nwet = 1 for wet conditions
                                             lu,
                                             iratns,
                                             &rc_tot,
@@ -836,6 +839,9 @@ namespace {
             const TF lat,
             const int day_of_year,
             const int nwet,
+    	    const int nwet_veg,      // Add these three parameters
+    	    const int nwet_soil,
+    	    const int nwet_wet,
             const int lu,
             const int iratns,
             const TF hlaw,
@@ -876,6 +882,9 @@ namespace {
                     lat,
                     day_of_year,
                     nwet,
+		    nwet_veg,      // Pass the class member variables
+    		    nwet_soil,
+    		    nwet_wet,
                     lu,
                     iratns,
                     hlaw,
@@ -937,35 +946,17 @@ Deposition<TF>::Deposition(Master& masterin, Grid<TF>& gridin, Fields<TF>& field
 
     // Added: Initialize DEPAC parameters for NH3 deposition
 
-    // Get start hour from input
-
-    // Radiation parameters
-    //glrad = inputin.get_item<TF>("deposition", "glrad", "", (TF)400.0);                // Global radiation (W/m2)
-    //sinphi = inputin.get_item<TF>("deposition", "sinphi", "", (TF)0.75);               // Sine of solar elevation:  Solar elevation angle at noon ≈ 48.5° ==>  sinphi = sin(48.5°) ≈ 0.75
-
-    // Meteorological parameters
-    //temperature = inputin.get_item<TF>("deposition", "temperature", "", (TF)293.15);  // Air temperature (K)
-    //rh = inputin.get_item<TF>("deposition", "rh", "", (TF)50.0);                      // Relative humidity (%)
-
-    // Surface parameters
-    //sai = inputin.get_item<TF>("deposition", "sai", "", (TF)6.0);                     // Stem area index (m2/m2)
-    //lat = inputin.get_item<TF>("deposition", "lat", "", (TF)52.3);                    // Latitude (degrees)
-
     // Time and surface condition parameters
-    //day_of_year = inputin.get_item<int>("deposition", "day_of_year", "", 264);        // Day of year: 20 September
-    nwet = inputin.get_item<int>("deposition", "nwet", "", 0);                        // Surface wetness indicator
-                                                                                      //lu = inputin.get_item<int>("deposition", "lu", "", 5);                            // Land use type
-
-                                                                                      // NH3-specific parameters
-    iratns = inputin.get_item<int>("deposition", "iratns", "", 2);                    // NH3 compensation point option
-    hlaw = inputin.get_item<TF>("deposition", "hlaw", "", (TF)6.1e4);                 //rmes = 1/(henry/3000.+100.*react)  ! Wesely '89, eq. 6
-    react = inputin.get_item<TF>("deposition", "react", "", (TF)0.0);                 // Reactivity factor
-    c_ave_prev_nh3 = inputin.get_item<TF>("deposition", "c_ave_prev_nh3", "", (TF)6.735e-9); // Previous NH3 concentration (mol/mol, then it converts to ug/m3)
-                                                                                             //catm = inputin.get_item<TF>("deposition", "catm", "", (TF)0.76);                  // Atmospheric NH3 concentration (μg/m3) (0.76 μg/m3 ~ 1 ppb)
-    pressure = inputin.get_item<TF>("deposition", "pressure", "", (TF)1.013e5);  // Default sea level pressure
-
+    iratns = inputin.get_item<int>("deposition", "iratns", "");                    // NH3 compensation point option
+    hlaw = inputin.get_item<TF>("deposition", "hlaw", "");                 //rmes = 1/(henry/3000.+100.*react)  ! Wesely '89, eq. 6
+    react = inputin.get_item<TF>("deposition", "react", "");                 // Reactivity factor
+    c_ave_prev_nh3 = inputin.get_item<TF>("deposition", "c_ave_prev_nh3", ""); // Previous NH3 concentration (mol/mol, then it converts to ug/m3)
+    pressure = inputin.get_item<TF>("thermo", "pbot", "");  // Get pressure from thermo settings
     sw_override_ccomp = inputin.get_item<bool>("deposition", "sw_override_ccomp", "", false);
     ccomp_override_value = inputin.get_item<TF>("deposition", "ccomp_override_value", "", TF(0.0));
+    nwet_veg = inputin.get_item<int>("deposition", "nwet_veg", "");  // Vegetation wetness
+    nwet_soil = inputin.get_item<int>("deposition", "nwet_soil", ""); // Soil wetness
+    nwet_wet = inputin.get_item<int>("deposition", "nwet_wet", "");  // Wet surface wetness
 
     //// Debug print
     //if (sw_override_ccomp) {
@@ -1293,6 +1284,9 @@ void Deposition<TF>::update_time_dependent(
                 lat,           // Latitude
                 day_of_year,   // Day of year
                 nwet,          // Surface wetness
+                nwet_veg,      // Pass the class member variables
+                nwet_soil,
+                nwet_wet,
                 lu,            // Land use type
                 iratns,        // NH3 compensation point option
                 hlaw,          // Henry's law constant
