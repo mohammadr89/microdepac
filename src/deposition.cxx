@@ -414,6 +414,8 @@ namespace {
 
                                 // Keep IFS Ra and use vegetation Rb scaling
                                 const TF rb = TF(2.0) / (ckarman * ustar[ij]) * diff_scl[0];
+				// Added this line to store rb
+				deposition_tiles.at(lu_type).rb.data()[ij] = rb;
 
                                 //const TF nh3_ugm3 = nh3_concentration[ijk] * xmnh3 / 22.414 * 1.0e9; //mol/mol to ug/m3 conversion(STP)
                                 const TF nh3_ugm3 = nh3_concentration[ijk] * c_ug; // mol/mol to ug/m3 conversion
@@ -545,6 +547,8 @@ namespace {
 
                                 // Use soil Rb scaling
                                 const TF rb = (TF)1.0 / (ckarman * ustar[ij]) * diff_scl[0];
+				// Added this line to store rb
+				deposition_tiles.at(lu_type).rb.data()[ij] = rb;
 
                                 //const TF nh3_ugm3 = nh3_concentration[ijk] * xmnh3 / 22.414 * 1.0e9; // mol/mol to ug/m3 conversion(STP)
                                 const TF nh3_ugm3 = nh3_concentration[ijk] * c_ug; // mol/mol to ug/m3 conversion
@@ -679,6 +683,8 @@ namespace {
 
                                     // Wet vegetation case
                                     const TF rb = TF(2.0) / (ckarman * ustar[ij]) * diff_scl[0];
+				    // Added this line to store rb
+				    deposition_tiles.at(lu_type).rb.data()[ij] = rb;
 
                                     //const TF nh3_ugm3 = nh3_concentration[ijk] * xmnh3 / 22.414 * 1.0e9; // mol/mol to ug/m3 conversion(STP)
                                     //const TF nh3_ugm3 = nh3_concentration[ijk] * c_ug; // mol/mol to ug/m3 conversion
@@ -751,6 +757,8 @@ namespace {
                                 else {
                                     // Wet soil case
                                     const TF rb = (TF)1.0 / (ckarman * ustar[ij]) * diff_scl[0];
+				    // Added this line to store rb
+				    deposition_tiles.at(lu_type).rb.data()[ij] = rb;
 
                                     //const TF nh3_ugm3 = nh3_concentration[ijk] * xmnh3 / 22.414 * 1.0e9; //mol/mol to ug/m3 conversion(STP)
                                     //const TF nh3_ugm3 = nh3_concentration[ijk] * c_ug; // mol/mol to ug/m3 conversion
@@ -1022,6 +1030,7 @@ void Deposition<TF>::init(Input& inputin)
         // tile.second.vdhcho.resize(gd.ijcells);
         tile.second.vdnh3.resize(gd.ijcells);  // allocate memory for arrays
         tile.second.ra.resize(gd.ijcells);
+        tile.second.rb.resize(gd.ijcells);
         tile.second.obuk.resize(gd.ijcells);
         tile.second.ustar.resize(gd.ijcells);
 
@@ -1039,6 +1048,8 @@ void Deposition<TF>::init(Input& inputin)
     }
     // Initialize grid-mean arrays
     ra_mean.resize(gd.ijcells);
+    rb_mean.resize(gd.ijcells);
+    std::fill(rb_mean.begin(), rb_mean.end(), TF(0.0));
     if (use_depac){
         ccomp_mean.resize(gd.ijcells);
         cw_mean.resize(gd.ijcells);
@@ -1124,6 +1135,7 @@ void Deposition<TF>::create(Stats<TF>& stats, Cross<TF>& cross)
             // "vdo3_veg", "vdno_veg", "vdno2_veg", "vdhno3_veg", "vdh2o2_veg", "vdrooh_veg", "vdhcho_veg"
             "vdnh3_soil", "vdnh3_wet", "vdnh3_veg",
             "ra_soil", "ra_wet", "ra_veg",
+            "rb", "rb_soil", "rb_wet", "rb_veg",
             "obuk_soil", "obuk_wet", "obuk_veg",
             "ustar_soil", "ustar_wet", "ustar_veg",
             "ccomp_tot_soil", "ccomp_tot_wet", "ccomp_tot_veg",
@@ -1264,6 +1276,14 @@ void Deposition<TF>::update_time_dependent(
     // Broadcast from root process
     master.broadcast(sync_params, 6, 0);
     master.broadcast(&c_ug_local, 1, 0);
+
+    ////debug prints on different processes to compare key values:
+    //if (master.get_mpiid() == 0) {
+    //    master.print_message("Root process: c_ug=%f, temperature=%f\n", c_ug, temperature);
+    //}
+    //if (master.get_mpiid() == 1) {
+    //    master.print_message("Process 1: c_ug=%f, temperature=%f\n", c_ug, temperature);
+    //}
     
     // Update local values on all processes
     temperature = sync_params[0];
@@ -1361,6 +1381,7 @@ void Deposition<TF>::update_time_dependent(
     // Only calculate DEPAC-specific means if using DEPAC
     if (use_depac) {
         get_tiled_mean(ra_mean.data(), "ra", (TF)1.0, tiles.at("veg").fraction.data(), tiles.at("soil").fraction.data(), tiles.at("wet").fraction.data());
+        get_tiled_mean(rb_mean.data(), "rb", (TF)1.0, tiles.at("veg").fraction.data(), tiles.at("soil").fraction.data(), tiles.at("wet").fraction.data());
         get_tiled_mean(ccomp_mean.data(), "ccomp_tot", (TF)1.0, tiles.at("veg").fraction.data(), tiles.at("soil").fraction.data(), tiles.at("wet").fraction.data());
 
         get_tiled_mean(cw_mean.data(), "cw", (TF)1.0, tiles.at("veg").fraction.data(), tiles.at("soil").fraction.data(), tiles.at("wet").fraction.data());
@@ -1462,6 +1483,14 @@ void Deposition<TF>::exec_cross(Cross<TF>& cross, unsigned long iotime)
         //    cross.cross_plane(deposition_tiles.at("soil").ra.data(), no_offset, name, iotime);
         //else if (name == "ra_wet")
         //    cross.cross_plane(deposition_tiles.at("wet").ra.data(), no_offset, name, iotime);
+        else if (name == "rb")
+            cross.cross_plane(rb_mean.data(), no_offset, name, iotime);
+        else if (name == "rb_veg")
+            cross.cross_plane(deposition_tiles.at("veg").rb.data(), no_offset, name, iotime);
+        else if (name == "rb_soil")
+            cross.cross_plane(deposition_tiles.at("soil").rb.data(), no_offset, name, iotime);
+        else if (name == "rb_wet")
+            cross.cross_plane(deposition_tiles.at("wet").rb.data(), no_offset, name, iotime);
         //else if (name == "obuk_veg")
         //    cross.cross_plane(deposition_tiles.at("veg").obuk.data(), no_offset, name, iotime);
         //else if (name == "obuk_soil")
@@ -1476,7 +1505,6 @@ void Deposition<TF>::exec_cross(Cross<TF>& cross, unsigned long iotime)
         //    cross.cross_plane(deposition_tiles.at("wet").ustar.data(), no_offset, name, iotime);
         else if (name == "ra")
             cross.cross_plane(ra_mean.data(), no_offset, name, iotime);
-
        else if (use_depac) {
             if (name == "ccomp_tot")
                 cross.cross_plane(ccomp_mean.data(), no_offset, name, iotime);
@@ -1613,6 +1641,11 @@ void Deposition<TF>::get_tiled_mean(
         fld_veg  = deposition_tiles.at("veg").ra.data();
         fld_soil = deposition_tiles.at("soil").ra.data();
         fld_wet  = deposition_tiles.at("wet").ra.data();
+    }
+    else if (name == "rb") {
+        fld_veg  = deposition_tiles.at("veg").rb.data();
+        fld_soil = deposition_tiles.at("soil").rb.data();
+        fld_wet  = deposition_tiles.at("wet").rb.data();
     }
     else if (name == "ccomp_tot") {
         fld_veg  = deposition_tiles.at("veg").ccomp_tot.data();

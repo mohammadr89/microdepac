@@ -28,6 +28,7 @@ struct Deposition_tile
                               // Land surface
     std::vector<TF> vdnh3;    // Deposition velocity of NH3 (m s-1)
     std::vector<TF> ra;
+    std::vector<TF> rb;
     std::vector<TF> obuk;
     std::vector<TF> ustar;
     std::vector<TF> ccomp_tot; // Compensation point (ug/m3)
@@ -145,6 +146,7 @@ private:
 
     // New arrays for grid-mean values
     std::vector<TF> ra_mean;      // Grid-mean aerodynamic resistance
+    std::vector<TF> rb_mean;      
     std::vector<TF> obuk_mean;
     std::vector<TF> ustar_mean;
     std::vector<TF> ccomp_mean;   // Grid-mean compensation point
