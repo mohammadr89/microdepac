@@ -7,6 +7,7 @@
 #include "timeloop.h"
 #include "boundary_surface_lsm.h"
 #include "boundary.h"
+#include "boundary_cyclic.h"
 #include "radiation.h" // Include radiation header
 
 class Master;
@@ -77,6 +78,7 @@ private:
 
     bool sw_deposition;
     bool use_depac;          // Switch to toggle between original and DEPAC models
+    void sync_depac_fields(Boundary<TF>& boundary);
 
     std::shared_ptr<Boundary_surface_lsm<TF>> boundary_surface_lsm;
 
@@ -128,6 +130,7 @@ private:
     TF react;            // Reactivity factor
     TF c_ave_prev_nh3;   // Previous NH3 concentration (μg/m3)
     TF catm;             // Atmospheric NH3 concentration (μg/m3)
+    TF c_ug;  // Synchronized conversion factor for NH3
     TF pressure;        // Pressure (Pa)
 
     // Tile management
