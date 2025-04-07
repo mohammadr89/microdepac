@@ -345,6 +345,7 @@ namespace {
                 const TF react,         // Reactivity factor
                 const TF c_ave_prev_nh3, // Previous NH3 concentration
                 const TF catm,          // Atmospheric NH3 concentration
+        	const TF c_ug,          // Concentration conversion factor
                 const TF pressure,      // Added pressure parameter
                 const bool sw_override_ccomp,        // NEW parameter
                 const TF ccomp_override_value,       // NEW parameter
@@ -361,7 +362,7 @@ namespace {
                     const TF xmair = 28.9647;       // Molar mass of dry air  [kg kmol-1]
                     const TF xmair_i = TF(1) / xmair;
                     //const TF c_ug = TF(1.0e9) * rhoref[kstart] * xmnh3 * xmair_i;   // mol/mol to ug/m3
-                    const TF c_ug = TF(1.0e9) * rho[kstart] * xmnh3 * xmair_i;   // mol/mol to ug/m3
+                    //const TF c_ug = TF(1.0e9) * rho[kstart] * xmnh3 * xmair_i;   // mol/mol to ug/m3
 
 
                     // Define component name outside the loops (doesn't change)
@@ -485,6 +486,17 @@ namespace {
                                         &csoil_out,
                                         use_input_ccomp  // Pass the flag
                                             );
+
+                                        // ccomp_tot = 5.0;
+                                        // gw_out = 5.0;
+                                        // gstom_out = 5.0;
+                                        // gsoil_eff_out = 5.0;
+                                        // gsoil_eff_out = 5.0;
+                                        // cw_out; = 5.0;
+                                        // cstom_out = 5.0;
+                                        // csoil_out = 5.0;
+                                        // rc_tot = 80.0;
+                                        // rc_eff = 80.0;
 
                                         // Calculate deposition velocity using resistance analogy
                                         if (status == STATUS_OK) {
@@ -848,6 +860,7 @@ namespace {
             const TF react,
             const TF c_ave_prev_nh3,
             const TF catm,
+            const TF c_ug,          // Concentration conversion factor
             const TF pressure,
             const bool sw_override_ccomp,
             const TF ccomp_override_value,
@@ -860,7 +873,7 @@ namespace {
     {
         if (use_depac) {
             // Use DEPAC model
-            calc_deposition_per_tile_depac(
+            calc_deposition_per_tile_depac<TF>(
                     master,
                     lu_type,
                     vdnh3,
@@ -891,6 +904,7 @@ namespace {
                     react,
                     c_ave_prev_nh3,
                     catm,
+		    c_ug,
                     pressure,
                     sw_override_ccomp,
                     ccomp_override_value,
@@ -1231,6 +1245,35 @@ void Deposition<TF>::update_time_dependent(
     auto& c_veg = boundary.get_c_veg();
     //auto& sw_flux_dn = radiation.get_c_veg(); //how to call a variable from a remote scheme (maarten)
 
+
+    // Calculate conversion factor for NH3
+    TF xmnh3 = 17.031;  // Molar mass of NH3 [g/mol]
+    TF xmair = 28.9647; // Molar mass of dry air [kg kmol-1]
+    TF xmair_i = TF(1) / xmair;
+    TF c_ug_local = TF(1.0e9) * rho[gd.kstart] * xmnh3 * xmair_i;
+    
+    // Synchronize meteorological parameters for all processes
+    TF sync_params[6];
+    sync_params[0] = temperature;
+    sync_params[1] = rh;
+    sync_params[2] = glrad;
+    sync_params[3] = sinphi;
+    sync_params[4] = static_cast<TF>(day_of_year);
+    sync_params[5] = pressure;
+    
+    // Broadcast from root process
+    master.broadcast(sync_params, 6, 0);
+    master.broadcast(&c_ug_local, 1, 0);
+    
+    // Update local values on all processes
+    temperature = sync_params[0];
+    rh = sync_params[1];
+    glrad = sync_params[2];
+    sinphi = sync_params[3];
+    day_of_year = static_cast<int>(sync_params[4]);
+    pressure = sync_params[5];
+    c_ug = c_ug_local;
+
     // Copy values from boundary tiles to deposition tiles
     for (const auto& tile_name : deposition_tile_names)
     {
@@ -1248,7 +1291,7 @@ void Deposition<TF>::update_time_dependent(
     // calculate deposition per tile:
     for (auto& tile : tiles)
     {
-        calc_deposition_per_tile(
+        calc_deposition_per_tile<TF>(
                 master,
                 tile.first,
                 // deposition_tiles.at(tile.first).vdo3.data(),
@@ -1293,6 +1336,7 @@ void Deposition<TF>::update_time_dependent(
                 react,         // Reactivity factor
                 c_ave_prev_nh3, // Previous NH3 concentration
                 catm,          // Atmospheric NH3 concentration
+		c_ug,
                 pressure,
                 sw_override_ccomp,              // NEW argument
                 ccomp_override_value,           // NEW argument
