@@ -375,6 +375,15 @@ namespace {
                                 const int ij = i + j*jj;
                                 const int ijk = i + j*jj + kstart*ijcells;
 
+				// Add debug printing to check parameter consistency across processes:
+				if (i == istart && j == jstart) {
+				    fprintf(stderr, "Process %d: Input parameters at point (%d,%d): T=%.3f°C, RH=%.2f%%, glrad=%.1f W/m², sinphi=%.4f\n",
+				        master.get_mpiid(), i, j, 
+				        temperature-273.15, rh, glrad, sinphi);
+				    fflush(stderr);
+				}
+
+
                                 //if (i == istart && j == jstart) {
                                 //    master.print_message("DEPAC call - day_of_year: %d (passing to Fortran)\n", day_of_year);
                                 //}
@@ -1186,6 +1195,11 @@ void Deposition<TF>::update_time_dependent(
 
     const std::vector<TF>& rho = thermo.get_basestate_vector("rho");
 
+    // Add at the beginning of update_time_dependent
+    fprintf(stderr, "Process %d is running with domain: istart=%d, iend=%d, jstart=%d, jend=%d\n",
+        master.get_mpiid(), gd.istart, gd.iend, gd.jstart, gd.jend);
+    fflush(stderr);
+
     // Only retrieve DEPAC-specific values if using DEPAC
     if (use_depac) {
         // Get day of year from Timeloop
@@ -1263,36 +1277,44 @@ void Deposition<TF>::update_time_dependent(
     TF xmair = 28.9647; // Molar mass of dry air [kg kmol-1]
     TF xmair_i = TF(1) / xmair;
     TF c_ug_local = TF(1.0e9) * rho[gd.kstart] * xmnh3 * xmair_i;
-    
-    // Synchronize meteorological parameters for all processes
-    TF sync_params[6];
-    sync_params[0] = temperature;
-    sync_params[1] = rh;
-    sync_params[2] = glrad;
-    sync_params[3] = sinphi;
-    sync_params[4] = static_cast<TF>(day_of_year);
-    sync_params[5] = pressure;
-    
-    // Broadcast from root process
-    master.broadcast(sync_params, 6, 0);
-    master.broadcast(&c_ug_local, 1, 0);
 
-    ////debug prints on different processes to compare key values:
-    //if (master.get_mpiid() == 0) {
-    //    master.print_message("Root process: c_ug=%f, temperature=%f\n", c_ug, temperature);
-    //}
-    //if (master.get_mpiid() == 1) {
-    //    master.print_message("Process 1: c_ug=%f, temperature=%f\n", c_ug, temperature);
-    //}
+    //// Debug print values on each process BEFORE what would be the broadcast
+    //master.print_message("Process %d BEFORE: c_ug_local=%f, temperature=%f, rh=%f, glrad=%f, sinphi=%f, day_of_year=%d, pressure=%f\n", 
+    //master.get_mpiid(), c_ug_local, temperature, rh, glrad, sinphi, day_of_year, pressure);
     
-    // Update local values on all processes
-    temperature = sync_params[0];
-    rh = sync_params[1];
-    glrad = sync_params[2];
-    sinphi = sync_params[3];
-    day_of_year = static_cast<int>(sync_params[4]);
-    pressure = sync_params[5];
-    c_ug = c_ug_local;
+    //// Synchronize meteorological parameters for all processes
+    //TF sync_params[6];
+    //sync_params[0] = temperature;
+    //sync_params[1] = rh;
+    //sync_params[2] = glrad;
+    //sync_params[3] = sinphi;
+    //sync_params[4] = static_cast<TF>(day_of_year);
+    //sync_params[5] = pressure;
+    //
+    //// Broadcast from root process
+    //master.broadcast(sync_params, 6, 0);
+    //master.broadcast(&c_ug_local, 1, 0);
+
+    //////debug prints on different processes to compare key values:
+    ////if (master.get_mpiid() == 0) {
+    ////    master.print_message("Root process: c_ug=%f, temperature=%f\n", c_ug, temperature);
+    ////}
+    ////if (master.get_mpiid() == 1) {
+    ////    master.print_message("Process 1: c_ug=%f, temperature=%f\n", c_ug, temperature);
+    ////}
+    //
+    //// Update local values on all processes
+    //temperature = sync_params[0];
+    //rh = sync_params[1];
+    //glrad = sync_params[2];
+    //sinphi = sync_params[3];
+    //day_of_year = static_cast<int>(sync_params[4]);
+    //pressure = sync_params[5];
+
+    //// Debug print values on each process AFTER what would be the broadcast
+    //master.print_message("Process %d AFTER: c_ug=%f, temperature=%f, rh=%f, glrad=%f, sinphi=%f, day_of_year=%d, pressure=%f\n", 
+    //master.get_mpiid(), c_ug_local, temperature, rh, glrad, sinphi, day_of_year, pressure);
+    //c_ug = c_ug_local;
 
     // Copy values from boundary tiles to deposition tiles
     for (const auto& tile_name : deposition_tile_names)
