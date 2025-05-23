@@ -24,11 +24,14 @@ enum class Deposition_type {disabled, enabled, simple, average};
 template<typename TF>
 struct Deposition_tile
 {
+    // we need to add storage for surface temperature in each tile
     std::string long_name;    // Descriptive name of tile
                               // Land surface
     std::vector<TF> vdnh3;    // Deposition velocity of NH3 (m s-1)
     std::vector<TF> ra;
     std::vector<TF> rb;
+    std::vector<TF> T_surface;   // Surface temperature for this tile
+    std::vector<TF> rh_surface;  // Surface RH for this tile
     std::vector<TF> obuk;
     std::vector<TF> ustar;
     std::vector<TF> ccomp_tot; // Compensation point (ug/m3)
@@ -160,5 +163,7 @@ private:
     std::vector<TF> csoil_out_mean; // Grid-mean soil compensation point
     std::vector<TF> rc_tot_mean;   // Grid-mean total canopy resistance
     std::vector<TF> rc_eff_mean;   // Grid-mean effective canopy resistance
+    std::vector<TF> T_surface_mean;
+    std::vector<TF> rh_surface_mean;
 };
 #endif

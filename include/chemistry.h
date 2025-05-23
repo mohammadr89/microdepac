@@ -55,7 +55,7 @@ class Chemistry
         void create(const Timeloop<TF>&, std::string, Netcdf_handle&, Stats<TF>&, Cross<TF>&);   ///< Read the profiles of the forces from the input.
         void update_time_dependent(Timeloop<TF>&, Boundary<TF>&, Thermo<TF>&); ///< Update the time dependent parameters.
                                                                                //void update_time_dependent(Timeloop<TF>&,Boundary<TF>&); ///< Update the time dependent parameters.
-        void exec(Thermo<TF>&,double,double);     ///< Add the tendencies belonging to the chemistry processes.
+        void exec(Thermo<TF>&, Boundary<TF>&, double, double);     ///< Add the tendencies belonging to the chemistry processes.
         void exec_stats(const int, const double, Stats<TF>&);   /// calculate statistics
         void exec_cross(Cross<TF>&, unsigned long);
 
@@ -107,7 +107,13 @@ class Chemistry
 
         const std::string tend_name = "chemistry";
         const std::string tend_longname = "Chemistry";
+
+        // New arrays for concentration scaling and fluxes
+        std::vector<TF> c_star_1;       // Scaled concentration parameter C*_1
+        std::vector<TF> c_star_2;       // Scaled concentration parameter using simple log formula
+        std::vector<TF> c_ref;          // Reference concentration at z_ref = 50*z0
+        std::vector<TF> c_diff_nh3;     // Difference between NH3 at kstart and c_star_1
+        std::vector<TF> flux_inst_cstar; // Instantaneous flux using c_star_1
+        std::vector<TF> flux_inst_cref;  // Instantaneous flux using c_ref
 };
 #endif
-
-

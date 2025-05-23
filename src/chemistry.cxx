@@ -513,8 +513,9 @@ void Chemistry<TF>::update_time_dependent(Timeloop<TF>& timeloop, Boundary<TF>& 
 
 
 #ifndef USECUDA
-    template <typename TF>
-void Chemistry<TF>::exec(Thermo<TF>& thermo,double sdt,double dt)
+template <typename TF>
+void Chemistry<TF>::exec(Thermo<TF>& thermo, Boundary<TF>& boundary, double sdt, double dt)
+
 {
     if (!sw_chemistry)
         return;

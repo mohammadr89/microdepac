@@ -332,6 +332,8 @@ namespace {
                 const TF sinphi,         // Solar elevation angle
                 const TF temperature,    // Temperature [K]
                 const TF rh,            // Relative humidity [%]
+                const TF* const restrict T_a,
+                const TF* const restrict RH_a,
                 const TF sai,           // Stem Area Index
                 const TF lat,           // Latitude [degrees]
                 const int day_of_year,  // Day of year
@@ -455,11 +457,11 @@ namespace {
                                         compnam,
                                         day_of_year,
                                         lat,
-                                        temperature -273.15,
+                                        T_a[ij] - 273.15,
                                         ustar[ij],
                                         glrad,
                                         sinphi,
-                                        rh,
+                                        RH_a[ij],
                                         lai[ij],
                                         //sai,
                                         local_sai,        // CHANGED: Use calculated SAI
@@ -575,11 +577,11 @@ namespace {
                                         compnam,
                                         day_of_year,
                                         lat,
-                                        temperature -273.15,
+                                        T_a[ij] - 273.15,
                                         ustar[ij],
                                         glrad,
                                         sinphi,
-                                        rh,
+                                        RH_a[ij],
                                         lai[ij],
                                         sai,
                                         nwet_soil,  // nwet = 0 for dry soil
@@ -694,11 +696,11 @@ namespace {
                                             compnam,
                                             day_of_year,
                                             lat,
-                                            temperature -273.15,
+                                            T_a[ij] - 273.15,
                                             ustar[ij],
                                             glrad,
                                             sinphi,
-                                            rh,
+                                            RH_a[ij],
                                             lai[ij],
                                             //sai,
                                             local_sai,        // CHANGED: Use calculated SAI
@@ -767,11 +769,11 @@ namespace {
                                             compnam,
                                             day_of_year,
                                             lat,
-                                            temperature -273.15,
+                                            T_a[ij] - 273.15,
                                             ustar[ij],
                                             glrad,
                                             sinphi,
-                                            rh,
+                                            RH_a[ij],
                                             lai[ij],
                                             sai,
                                             nwet_wet,  // nwet = 1 for wet conditions
@@ -855,6 +857,8 @@ namespace {
             const TF sinphi,
             const TF temperature,
             const TF rh,
+            const TF* const restrict T_a,
+            const TF* const restrict RH_a,
             const TF sai,
             const TF lat,
             const int day_of_year,
@@ -899,20 +903,22 @@ namespace {
                     sinphi,
                     temperature,
                     rh,
+                    T_a,
+                    RH_a,
                     sai,
                     lat,
                     day_of_year,
                     nwet,
-		    nwet_veg,      // Pass the class member variables
-    		    nwet_soil,
-    		    nwet_wet,
+		            nwet_veg,      // Pass the class member variables
+    		        nwet_soil,
+    		        nwet_wet,
                     lu,
                     iratns,
                     hlaw,
                     react,
                     c_ave_prev_nh3,
                     catm,
-		    c_ug,
+		            c_ug,
                     pressure,
                     sw_override_ccomp,
                     ccomp_override_value,
@@ -1033,6 +1039,8 @@ void Deposition<TF>::init(Input& inputin)
         tile.second.rb.resize(gd.ijcells);
         tile.second.obuk.resize(gd.ijcells);
         tile.second.ustar.resize(gd.ijcells);
+        tile.second.T_surface.resize(gd.ijcells);
+        tile.second.rh_surface.resize(gd.ijcells);
 
 	if (use_depac){
             tile.second.ccomp_tot.resize(gd.ijcells);
@@ -1050,6 +1058,9 @@ void Deposition<TF>::init(Input& inputin)
     ra_mean.resize(gd.ijcells);
     rb_mean.resize(gd.ijcells);
     std::fill(rb_mean.begin(), rb_mean.end(), TF(0.0));
+    T_surface_mean.resize(gd.ijcells);
+    rh_surface_mean.resize(gd.ijcells);
+
     if (use_depac){
         ccomp_mean.resize(gd.ijcells);
         cw_mean.resize(gd.ijcells);
@@ -1150,7 +1161,15 @@ void Deposition<TF>::create(Stats<TF>& stats, Cross<TF>& cross)
             "cstom_out_soil", "cstom_out_wet", "cstom_out_veg",
             "csoil_out_soil", "csoil_out_wet", "csoil_out_veg",
             "rc_tot", "rc_tot_veg", "rc_tot_soil", "rc_tot_wet",
-            "rc_eff", "rc_eff_veg", "rc_eff_soil", "rc_eff_wet"
+            "rc_eff", "rc_eff_veg", "rc_eff_soil", "rc_eff_wet",
+            "T_surface",        // grid-mean surface temperature
+            "T_surface_veg",    // vegetation tile surface temperature  
+            "T_surface_soil",   // soil tile surface temperature
+            "T_surface_wet",    // wet tile surface temperature
+            "rh_surface",       // grid-mean surface RH
+            "rh_surface_veg",   // vegetation tile surface RH
+            "rh_surface_soil",  // soil tile surface RH
+            "rh_surface_wet"    // wet tile surface RH
         };
 
         cross_list = cross.get_enabled_variables(allowed_crossvars);
@@ -1185,6 +1204,10 @@ void Deposition<TF>::update_time_dependent(
     const TF actual_time = t0 + model_time;
 
     const std::vector<TF>& rho = thermo.get_basestate_vector("rho");
+
+    // ADD THESE NEW DECLARATIONS HERE:
+    std::vector<TF> T_a(gd.ijcells);   // Temperature array
+    std::vector<TF> RH_a(gd.ijcells); // Relative humidity array
 
     // Only retrieve DEPAC-specific values if using DEPAC
     if (use_depac) {
@@ -1233,22 +1256,66 @@ void Deposition<TF>::update_time_dependent(
                                                            ///  //std::cout << "Temperature from MicroHH (K): " << temperature << std::endl;
                                                            ///  //std::cout << "Temperature passed to DEPAC (C): " << temperature << std::endl;
 
-        auto tmp2 = fields.get_tmp();
-        if (tmp2 && tmp2->fld.data()) {
-            thermo.get_thermo_field(*tmp2, "T", true, false);
-            // Get temperature at proper surface level
-            temperature = tmp2->fld.data()[gd.kstart*gd.ijcells];
-            fields.release_tmp(tmp2);
+    // Extract temperature field
+    auto tmp2 = fields.get_tmp();
+    thermo.get_thermo_field(*tmp2, "T", true, false);
+    
+    // Extract temperature at kstart level into 2D array
+    for (int j = gd.jstart; j < gd.jend; ++j)
+        for (int i = gd.istart; i < gd.iend; ++i)
+        {
+            const int ij = i + j * gd.icells;
+            const int ijk = i + j * gd.icells + gd.kstart * gd.ijcells;
+            T_a[ij] = tmp2->fld[ijk];
         }
+    
+    fields.release_tmp(tmp2);
+    
+    // Extract relative humidity field
+    auto tmp1 = fields.get_tmp();
+    thermo.get_thermo_field(*tmp1, "rh", true, false);
+    
+    // Extract RH at kstart level into 2D array
+    for (int j = gd.jstart; j < gd.jend; ++j)
+        for (int i = gd.istart; i < gd.iend; ++i)
+        {
+            const int ij = i + j * gd.icells;
+            const int ijk = i + j * gd.icells + gd.kstart * gd.ijcells;
+            RH_a[ij] = tmp1->fld[ijk] * 100.0;  // Convert to percentage
+        }
+    
+    fields.release_tmp(tmp1);
+    
+    // Set representative values for synchronization (use first valid grid point)
+    temperature = T_a[gd.istart + gd.jstart * gd.icells];
+    rh = RH_a[gd.istart + gd.jstart * gd.icells];
 
-        auto tmp1 = fields.get_tmp();
-        if (tmp1 && tmp1->fld.data()) {
-            thermo.get_thermo_field(*tmp1, "rh", true, false);
-            // Get RH at proper surface level
-            rh = tmp1->fld.data()[gd.kstart*gd.ijcells] * 100.0;
-            fields.release_tmp(tmp1);
+    // Store surface temperature and RH in tiles
+    for (const auto& tile_name : deposition_tile_names)
+    {
+        if (deposition_tiles.count(tile_name) > 0)
+        {
+            auto& dep_tile = deposition_tiles.at(tile_name);
+            
+            // Copy surface temperature and RH to each tile
+            std::copy(T_a.begin(), T_a.end(), dep_tile.T_surface.begin());
+            std::copy(RH_a.begin(), RH_a.end(), dep_tile.rh_surface.begin());
         }
     }
+    
+    // Calculate grid-mean surface temperature and RH
+    auto& tiles = boundary.get_tiles();
+    get_tiled_mean(T_surface_mean.data(), "T_surface", (TF)1.0, 
+                   tiles.at("veg").fraction.data(), 
+                   tiles.at("soil").fraction.data(), 
+                   tiles.at("wet").fraction.data());
+    
+    get_tiled_mean(rh_surface_mean.data(), "rh_surface", (TF)1.0,
+                   tiles.at("veg").fraction.data(), 
+                   tiles.at("soil").fraction.data(), 
+                   tiles.at("wet").fraction.data());
+    }
+
 
     // get information from lsm:
     auto& tiles = boundary.get_tiles();
@@ -1262,37 +1329,38 @@ void Deposition<TF>::update_time_dependent(
     TF xmnh3 = 17.031;  // Molar mass of NH3 [g/mol]
     TF xmair = 28.9647; // Molar mass of dry air [kg kmol-1]
     TF xmair_i = TF(1) / xmair;
-    TF c_ug_local = TF(1.0e9) * rho[gd.kstart] * xmnh3 * xmair_i;
+    //TF c_ug_local = TF(1.0e9) * rho[gd.kstart] * xmnh3 * xmair_i;
+    TF c_ug = TF(1.0e9) * rho[gd.kstart] * xmnh3 * xmair_i;
     
-    // Synchronize meteorological parameters for all processes
-    TF sync_params[6];
-    sync_params[0] = temperature;
-    sync_params[1] = rh;
-    sync_params[2] = glrad;
-    sync_params[3] = sinphi;
-    sync_params[4] = static_cast<TF>(day_of_year);
-    sync_params[5] = pressure;
-    
-    // Broadcast from root process
-    master.broadcast(sync_params, 6, 0);
-    master.broadcast(&c_ug_local, 1, 0);
+    //// Synchronize meteorological parameters for all processes
+    //TF sync_params[6];
+    //sync_params[0] = temperature;
+    //sync_params[1] = rh;
+    //sync_params[2] = glrad;
+    //sync_params[3] = sinphi;
+    //sync_params[4] = static_cast<TF>(day_of_year);
+    //sync_params[5] = pressure;
+    //
+    //// Broadcast from root process
+    //master.broadcast(sync_params, 6, 0);
+    //master.broadcast(&c_ug_local, 1, 0);
 
-    ////debug prints on different processes to compare key values:
-    //if (master.get_mpiid() == 0) {
-    //    master.print_message("Root process: c_ug=%f, temperature=%f\n", c_ug, temperature);
-    //}
-    //if (master.get_mpiid() == 1) {
-    //    master.print_message("Process 1: c_ug=%f, temperature=%f\n", c_ug, temperature);
-    //}
-    
-    // Update local values on all processes
-    temperature = sync_params[0];
-    rh = sync_params[1];
-    glrad = sync_params[2];
-    sinphi = sync_params[3];
-    day_of_year = static_cast<int>(sync_params[4]);
-    pressure = sync_params[5];
-    c_ug = c_ug_local;
+    //////debug prints on different processes to compare key values:
+    ////if (master.get_mpiid() == 0) {
+    ////    master.print_message("Root process: c_ug=%f, temperature=%f\n", c_ug, temperature);
+    ////}
+    ////if (master.get_mpiid() == 1) {
+    ////    master.print_message("Process 1: c_ug=%f, temperature=%f\n", c_ug, temperature);
+    ////}
+    //
+    //// Update local values on all processes
+    //temperature = sync_params[0];
+    //rh = sync_params[1];
+    //glrad = sync_params[2];
+    //sinphi = sync_params[3];
+    //day_of_year = static_cast<int>(sync_params[4]);
+    //pressure = sync_params[5];
+    //c_ug = c_ug_local;
 
     // Copy values from boundary tiles to deposition tiles
     for (const auto& tile_name : deposition_tile_names)
@@ -1341,8 +1409,10 @@ void Deposition<TF>::update_time_dependent(
                 // Added: DEPAC parameters
                 glrad,          // Now using calculated time-dependent radiation
                 sinphi,         // Sine of solar elevation
-                temperature,    // Air temperature
-                rh,            // Relative humidity
+                temperature,
+                rh,
+                T_a.data(),    // Air temperature
+                RH_a.data(),            // Relative humidity
                 sai,           // Stem area index
                 lat,           // Latitude
                 day_of_year,   // Day of year
@@ -1544,6 +1614,22 @@ void Deposition<TF>::exec_cross(Cross<TF>& cross, unsigned long iotime)
                 cross.cross_plane(deposition_tiles.at("soil").rc_eff.data(), no_offset, name, iotime);
             else if (name == "rc_eff_wet")
                 cross.cross_plane(deposition_tiles.at("wet").rc_eff.data(), no_offset, name, iotime);
+            else if (name == "T_surface")
+                cross.cross_plane(T_surface_mean.data(), no_offset, name, iotime);
+            else if (name == "T_surface_veg")
+                cross.cross_plane(deposition_tiles.at("veg").T_surface.data(), no_offset, name, iotime);
+            else if (name == "T_surface_soil")
+                cross.cross_plane(deposition_tiles.at("soil").T_surface.data(), no_offset, name, iotime);
+            else if (name == "T_surface_wet")
+                cross.cross_plane(deposition_tiles.at("wet").T_surface.data(), no_offset, name, iotime);
+            else if (name == "rh_surface")
+                cross.cross_plane(rh_surface_mean.data(), no_offset, name, iotime);
+            else if (name == "rh_surface_veg")
+                cross.cross_plane(deposition_tiles.at("veg").rh_surface.data(), no_offset, name, iotime);
+            else if (name == "rh_surface_soil")
+                cross.cross_plane(deposition_tiles.at("soil").rh_surface.data(), no_offset, name, iotime);
+            else if (name == "rh_surface_wet")
+                cross.cross_plane(deposition_tiles.at("wet").rh_surface.data(), no_offset, name, iotime);
        }
     }
 }
@@ -1692,6 +1778,16 @@ void Deposition<TF>::get_tiled_mean(
         fld_soil = deposition_tiles.at("soil").rc_eff.data();
         fld_wet  = deposition_tiles.at("wet").rc_eff.data();
     }
+    else if (name == "T_surface") { 
+        fld_veg  = deposition_tiles.at("veg").T_surface.data();
+        fld_soil = deposition_tiles.at("soil").T_surface.data();
+        fld_wet  = deposition_tiles.at("wet").T_surface.data();
+    }
+    else if (name == "rh_surface") {
+        fld_veg  = deposition_tiles.at("veg").rh_surface.data();
+        fld_soil = deposition_tiles.at("soil").rh_surface.data();
+        fld_wet  = deposition_tiles.at("wet").rh_surface.data();
+    }
     else
         throw std::runtime_error("Cannot calculate tiled mean for variable \"" + name + "\"\\n");
 
@@ -1802,4 +1898,5 @@ void Deposition<TF>::spatial_avg_vd(
 
 template class Deposition<double>;
 //:template class Chemistry<float>;
+
 
