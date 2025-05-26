@@ -1,56 +1,3 @@
-/*
- * This code has been modified to handle only NH3 deposition calculations.
- * All other chemical species (O3, NO, NO2, HNO3, H2O2, ROOH, HCHO) have been removed.
- *
- * Original species order was:
- * [0] = O3
- * [1] = NO
- * [2] = NO2
- * [3] = HNO3
- * [4] = H2O2
- * [5] = ROOH
- * [6] = HCHO
- *
- * Modified version now only contains:
- * [0] = NH3
- */
-
-/*
- *Integration of DEPAC Resistance Calculations in MicroHH
- *
- *1. Problem:
- *   - MicroHH uses IFS land surface scheme with vegetation, soil, and wet surface tiles.
- *   - DEPAC resistance calculations need integration while keeping IFS's Ra and Rb.
- *   - Vegetation types (grass vs forest) were not properly distinguished by LAI.
- *
- *2. Key Changes:
- *   a) LAI-Based Land Use Determination:
- *      - Grass: LAI ≤ 3.5 (land use = 1, SAI = LAI)
- *      - Forest: LAI > 3.5 (land use = 4, SAI = LAI + 1.0)
- *
- *   b) Unit Conversion:
- *      - mol/mol → µg/m³: `conc_ugm3 = conc_molmol * pressure * M_NH3 / (R * T) * 1e6`
- *      - mol/mol → ppb: `conc_ppb = conc_molmol * 1e9`
- *
- *3. Implementation:
- *   - Vegetation (lu_type = "veg"): LAI-based land use and SAI applied in DEPAC.
- *   - Soil (lu_type = "soil"): No changes, fixed soil parameters.
- *   - Wet (lu_type = "wet"): Split into wet vegetation and wet soil.
- *      - Wet vegetation follows the same rules as dry vegetation.
- *
- *4. DEPAC Integration:
- *   - Vegetation presence: `LAI_present = (lai > 0.0)`
- *   - Stomatal conductance: `Gsto = lai * gsto`
- *   - Total resistance: `1/RC = 1/Rstom + 1/Rw + 1/Rsoil_eff`
- *
- *5. Benefits:
- *   - Accurate vegetation parameters based on LAI.
- *   - Differentiates grass vs forest with proper resistance scaling.
- *   - Handles both dry and wet conditions effectively.
- */
-
-
-//#include <cstdio>
 #include "boundary.h"
 #include "boundary_surface_lsm.h"
 #include "chemistry.h"
@@ -104,13 +51,13 @@ extern "C" {
             float *rc_eff,
             float *gsoil_eff_out,
             float *rsoil_eff_out,
-            float p,  // Added pressure parameter
-            float *gw_out,           // Add these parameters
+            float p,  
+            float *gw_out,
             float *gstom_out,
             float *cw_out,
             float *cstom_out,
             float *csoil_out,
-            bool use_input_ccomp  // Added flag to use input ccomp_tot
+            bool use_input_ccomp  // flag to use input ccomp_tot
 
                 );
 }
