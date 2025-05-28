@@ -23,6 +23,7 @@ enum class Deposition_type {disabled, enabled, simple, average};
 
 template<typename TF>
 struct Deposition_tile
+//it's a backpack for each land tile (like grass, soil, or wetland), holding all the information we need to compute ammonia deposition
 {
     // we need to add storage for surface temperature in each tile
     std::string long_name;    // Descriptive name of tile
@@ -47,6 +48,10 @@ struct Deposition_tile
     std::vector<TF> rc_eff;   // Effective canopy resistance (s/m)
 };
 
+
+// A map (dictionary) that links each land type name (like "veg", "soil", "wet")
+// to its corresponding Deposition_tile<TF> object, which holds all the surface
+// data (temperature, humidity, resistances, etc.) needed for NH3 deposition modeling.
 template<typename TF>
 using Deposition_tile_map = std::map<std::string, Deposition_tile<TF>>;
 
@@ -54,11 +59,15 @@ template<typename TF>
 class Deposition
 {
 public:
-    Deposition(Master&, Grid<TF>&, Fields<TF>&, Radiation<TF>&, Input&);
-    ~Deposition();
+//These are the functions we can use from outside the machine:
 
-    void init(Input&);
+    Deposition(Master&, Grid<TF>&, Fields<TF>&, Radiation<TF>&, Input&);// when the machine is created
+    ~Deposition();// when the machine is turned off
+
+    void init(Input&); //Reads configuration from the Input object; Prepares default values; Initializes deposition_tiles...
     void create(Stats<TF>&, Cross<TF>&);
+
+    //This is the engine that runs again and again at each timestep — for each moment in the day — and updates deposition
     void update_time_dependent(
                                Timeloop<TF>&, 
                                Boundary<TF>&,
@@ -82,7 +91,7 @@ private:
 
     bool sw_deposition;
     bool use_depac;          // Switch to toggle between original and DEPAC models
-    void sync_depac_fields(Boundary<TF>& boundary);
+    void sync_depac_fields(Boundary<TF>& boundary);//Keeps boundary conditions up-to-date for the DEPAC model.
 
     std::shared_ptr<Boundary_surface_lsm<TF>> boundary_surface_lsm;
 
