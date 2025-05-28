@@ -24,7 +24,8 @@
 
 
 // Added: C linkage for DEPAC Fortran wrapper
-extern "C" {
+// The bridge between C++ and Fortran
+extern "C" { //This function is written in another language (C/Fortran), but let me use it here in C++
     void depac_wrapper(
             const char* compnam,
             int day_of_year,
@@ -413,7 +414,7 @@ namespace {
                                         //sai,
                                         local_sai,        // CHANGED: Use calculated SAI
                                         nwet_veg,  // nwet = 0 for dry vegetation
-                                            //lu,
+                                        //lu,
                                         local_lu,         // CHANGED: Use LAI-determined land use type
                                         iratns,
                                         &rc_tot,
@@ -436,7 +437,7 @@ namespace {
                                         &cstom_out,         // Added output variable
                                         &csoil_out,
                                         use_input_ccomp  // Pass the flag
-                                            );
+                                );
 
                                         // ccomp_tot = 5.0;
                                         // gw_out = 5.0;
@@ -554,7 +555,7 @@ namespace {
                                         &cstom_out,         // Added output variable
                                         &csoil_out,
                                         use_input_ccomp  // Pass the flag
-                                            );
+                                );
 
                                 if (status == STATUS_OK) {
 
@@ -675,7 +676,7 @@ namespace {
                                             &cstom_out,         // Added output variable
                                             &csoil_out,
                                             use_input_ccomp  // Pass the flag
-                                                );
+                                    );
 
                                             if (status == STATUS_OK) {
 
@@ -746,7 +747,7 @@ namespace {
                                             &cstom_out,         // Added output variable
                                             &csoil_out,
                                             use_input_ccomp  // Pass the flag
-                                                );
+                                    );
 
                                     if (status == STATUS_OK) {
                                         // Store ccomp_tot value
@@ -1381,7 +1382,7 @@ void Deposition<TF>::update_time_dependent(
                 react,         // Reactivity factor
                 c_ave_prev_nh3, // Previous NH3 concentration
                 catm,          // Atmospheric NH3 concentration
-		c_ug,
+		        c_ug,
                 pressure,
                 sw_override_ccomp,              // NEW argument
                 ccomp_override_value,           // NEW argument
