@@ -31,7 +31,7 @@ extern "C" { //This function is written in another language (C/Fortran), but let
             int day_of_year,
             float lat,
             float t,
-            float ust,
+            float ust, //how strongly the wind transfers momentum to the surface, setting the scale for turbulence and mixing near theground
             float glrad,
             float sinphi,
             float rh,
@@ -59,32 +59,29 @@ extern "C" { //This function is written in another language (C/Fortran), but let
             float *cstom_out,
             float *csoil_out,
             bool use_input_ccomp  // flag to use input ccomp_tot
-
-                );
+    );
 }
 
 namespace {
-
     template<typename TF>
-        void calc_tiled_mean(
-                TF* const restrict fld,
-                const TF* const restrict f_veg,
-                const TF* const restrict f_soil,
-                const TF* const restrict f_wet,
-                const TF* const restrict fld_veg,
-                const TF* const restrict fld_soil,
-                const TF* const restrict fld_wet,
-                const TF fac,
-                const int istart, const int iend,
-                const int jstart, const int jend,
-                const int icells)
+    void calc_tiled_mean(
+        TF* const restrict fld, //This is where the result is stored (an output array).
+        const TF* const restrict f_veg, //These are the fractions (between 0 and 1) of each land type at each point.
+        const TF* const restrict f_soil,
+        const TF* const restrict f_wet,
+        const TF* const restrict fld_veg, //These are the values (e.g. NH₃ flux, temperature, etc.) for each tile type.
+        const TF* const restrict fld_soil,
+        const TF* const restrict fld_wet,
+        const TF fac, //A constant multiplier for all final values
+        const int istart, const int iend,
+        const int jstart, const int jend,
+        const int icells)
         {
             for (int j=jstart; j<jend; ++j)
             #pragma ivdep
                 for (int i=istart; i<iend; ++i)
                 {
                     const int ij  = i + j*icells;
-
                     fld[ij] = (
                             f_veg [ij] * fld_veg [ij] +
                             f_soil[ij] * fld_soil[ij] +
@@ -93,16 +90,16 @@ namespace {
         }
 
     template<typename TF>
-        void calc_vd_water(
-                TF* const restrict fld,
-                const TF* const restrict ra,
-                const TF* const restrict ustar,
-                const int* const restrict water_mask,
-                const TF diff_scl,
-                const TF rwat,
-                const int istart, const int iend,
-                const int jstart, const int jend,
-                const int icells)
+    void calc_vd_water(
+        TF* const restrict fld,
+        const TF* const restrict ra,
+        const TF* const restrict ustar,
+        const int* const restrict water_mask,
+        const TF diff_scl,
+        const TF rwat,
+        const int istart, const int iend,
+        const int jstart, const int jend,
+        const int icells)
         {
             const TF ckarman = 0.4;
 
@@ -121,11 +118,11 @@ namespace {
         }
 
     template<typename TF>
-        void calc_spatial_avg_deposition(
-                TF* const restrict fld,
-                const int istart, const int iend,
-                const int jstart, const int jend,
-                const int icells)
+    void calc_spatial_avg_deposition(
+        TF* const restrict fld,
+        const int istart, const int iend,
+        const int jstart, const int jend,
+        const int icells)
         {
             //// Calculate sum and count
             //TF n_dep = (TF)0.0;
@@ -141,14 +138,14 @@ namespace {
             //    }
 
             //// Calculate and apply average
-            //TF avg_dep = sum_dep / n_dep;
+            //TF avg_dep = sum_dep / n_dep;  // Calculate average across entire domain
 
             //for (int j=jstart; j<jend; ++j)
             //    #pragma ivdep
             //    for (int i=istart; i<iend; ++i)
             //    {
             //        const int ij = i + j*icells;
-            //        fld[ij] = avg_dep;
+            //        fld[ij] = avg_dep; //Replace ALL Values with That Average
             //    }
         }
 
@@ -173,10 +170,38 @@ namespace {
         const int jstart, const int jend,
         const int jj)
     {
-
-        const int ntrac_vd = 1;
+        const int ntrac_vd = 1; // One tracer (NH3)
         const TF ckarman = (TF)0.4;
-        const TF hc = (TF)10.0; // constant for now...
+        const TF hc = (TF)10.0; // Canopy height - constant for now...
+
+        // lu_type comes from the boundary/land surface model via
+        // boundary.get_tiles() 
+        //     ↓ 
+        // returns map with keys: "veg", "soil", "wet"
+        //     ↓
+        // for (auto& tile : tiles)
+        //     ↓  
+        // tile.first = "veg" (first iteration)
+        // tile.first = "soil" (second iteration)  
+        // tile.first = "wet" (third iteration)
+        //     ↓
+        // calc_deposition_per_tile(master, tile.first, ...)
+        //     ↓
+        // lu_type parameter = "veg", "soil", or "wet"
+
+        // Regarding tile.first:
+        // auto& tiles = boundary.get_tiles();
+        // // tiles = std::map<std::string, Surface_tile<TF>>
+        // //                      ↑              ↑
+        // //                   tile.first    tile.second
+        // 
+        // for (auto& tile : tiles) {
+        //     calc_deposition_per_tile<TF>(
+        //         master,
+        //         tile.first,    // ← This is std::string: "veg", "soil", or "wet"
+        //         // ...
+        //     );
+        // }
 
         if (lu_type == "veg")
         {
@@ -185,7 +210,7 @@ namespace {
             // because otherwise rb and rc vectors must be allocated for the entire grid instead of for
             // the number of tracers. Also, it avoids the use of if statements (e.g. "if (t==0) vdnh3[ij] = ...")
             std::vector<TF> rmes_local = {rmes[0]};
-            std::vector<TF> rb(ntrac_vd, (TF)0.0);
+            std::vector<TF> rb(ntrac_vd, (TF)0.0); //the vector rb starts filled with zero(s).
             std::vector<TF> rc(ntrac_vd, (TF)0.0);
 
             for (int j=jstart; j<jend; ++j)
@@ -231,6 +256,11 @@ namespace {
                 }
         }
         else if (lu_type == "wet")
+        // Mixes contributions from soil and vegetation:
+        // Computes two parallel deposition paths:
+        //   1. Through the wet leaf surface
+        //   2. Through the wet soil surface
+        // Blends both paths using c_veg[ij] (canopy cover fraction)
         {
             std::vector<TF> rb_veg(ntrac_vd, (TF)0.0);
             std::vector<TF> rb_soil(ntrac_vd, (TF)0.0);
@@ -297,9 +327,14 @@ namespace {
                 const TF catm,          // Atmospheric NH3 concentration
         	    const TF c_ug,          // Concentration conversion factor
                 const TF pressure,      // Added pressure parameter
-                const bool sw_override_ccomp,        // NEW parameter
-                const TF ccomp_override_value,       // NEW parameter
-                Deposition_tile_map<TF>& deposition_tiles, // NEW parameter
+                const bool sw_override_ccomp,        // 
+                const TF ccomp_override_value,       // 
+                Deposition_tile_map<TF>& deposition_tiles,  // Stores and access DEPAC-specific output data
+                                                            // This parameter enables comprehensive DEPAC diagnostics by:
+                                                            // Storing all DEPAC intermediate outputs
+                                                            // Enabling spatial analysis of resistance components
+                                                            // Supporting cross-section outputs for debugging
+                                                            // Facilitating model validation and research  
                 const int istart, const int iend,
                 const int jstart, const int jend,
                 const int jj,
@@ -1617,15 +1652,24 @@ const TF Deposition<TF>::get_vd(const std::string& name) const
     }
 }
 
-    template<typename TF>
+template<typename TF>
 void Deposition<TF>::get_tiled_mean(
         TF* restrict fld_out, std::string name, const TF fac,
         const TF* const restrict fveg,
         const TF* const restrict fsoil,
         const TF* const restrict fwet)
+//TF* restrict fld_out,           // OUTPUT: Where results go
+                                  // - Pre-allocated array for calculated averages
+                                  // - 'restrict' = no memory overlap (compiler optimization)
+                                  // - Example: vdnh3 array gets filled with NH3 deposition velocities
+        
+// Example call:
+// get_tiled_mean(vdnh3, "nh3", 1.0, veg_fraction, soil_fraction, wet_fraction);
+//                  ↑      ↑     ↑         ↑            ↑            ↑
+//               fld_out  name  fac      fveg        fsoil        fwet
+//
 {
     auto& gd = grid.get_grid_data();
-
     TF* fld_veg;
     TF* fld_soil;
     TF* fld_wet;
