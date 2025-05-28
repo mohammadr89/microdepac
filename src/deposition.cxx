@@ -965,6 +965,7 @@ void Deposition<TF>::init(Input& inputin)
 {
     // Always read the default deposition velocities. They are needed by 
     // chemistry, even if deposition is disabled.
+
     // vd_o3   = inputin.get_item<TF>("deposition", "vdo3", "", (TF)0.005);
     // vd_no   = inputin.get_item<TF>("deposition", "vdno", "", (TF)0.002);
     // vd_no2  = inputin.get_item<TF>("deposition", "vdno2", "", (TF)0.005);
@@ -979,12 +980,15 @@ void Deposition<TF>::init(Input& inputin)
 
     auto& gd = grid.get_grid_data();
 
-    // Create surface tiles for deposition:
+    // Create surface tiles for different surface types for deposition:
+    // emplace() creates new Deposition_tile<TF> object for each surface type
     for (auto& name : deposition_tile_names)
         deposition_tiles.emplace(name, Deposition_tile<TF>{});
 
     for (auto& tile : deposition_tiles)
     {
+        // "second" refers to the value part of a key-value pair in the map/dictionary.
+
         // tile.second.vdo3.resize(gd.ijcells);
         // tile.second.vdno.resize(gd.ijcells);
         // tile.second.vdno2.resize(gd.ijcells);
@@ -1133,7 +1137,6 @@ void Deposition<TF>::create(Stats<TF>& stats, Cross<TF>& cross)
         cross_list = cross.get_enabled_variables(allowed_crossvars);
     }
 }
-
 
 template <typename TF>
 void Deposition<TF>::update_time_dependent(
