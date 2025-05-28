@@ -205,7 +205,6 @@ namespace {
 
         if (lu_type == "veg")
         {
-
             // Note: I think memory-wise it's more efficient to first loop over ij and then over species,
             // because otherwise rb and rc vectors must be allocated for the entire grid instead of for
             // the number of tracers. Also, it avoids the use of if statements (e.g. "if (t==0) vdnh3[ij] = ...")
@@ -215,7 +214,6 @@ namespace {
 
             for (int j=jstart; j<jend; ++j)
                 for (int i=istart; i<iend; ++i) {
-
                     const int ij = i + j*jj;
 
                     //Do not proceed in loop if tile fraction is small
@@ -241,7 +239,6 @@ namespace {
 
             for (int j=jstart; j<jend; ++j)
                 for (int i=istart; i<iend; ++i) {
-
                     const int ij = i + j*jj;
 
                     //Do not proceed in loop if tile fraction is small
@@ -251,7 +248,6 @@ namespace {
                     {
                         rb[t] = (TF)1.0 / (ckarman * ustar[ij]) * diff_scl[t];
                     }
-
                     vdnh3[ij]   = (TF)1.0 / (ra[ij] + rb[0] + rsoil[0]);
                 }
         }
@@ -274,7 +270,6 @@ namespace {
 
                     // Do not proceed in loop if tile fraction is small
                     if (fraction[ij] < (TF)1e-12) continue;
-
                     const TF ra_inc = (TF)14. * hc * lai[ij] / ustar[ij];
 
                     //Note that in rc calculation, rcut is replaced by rws for calculating wet skin uptake
@@ -349,12 +344,10 @@ namespace {
                     //const TF c_ug = TF(1.0e9) * rhoref[kstart] * xmnh3 * xmair_i;   // mol/mol to ug/m3
                     //const TF c_ug = TF(1.0e9) * rho[kstart] * xmnh3 * xmair_i;   // mol/mol to ug/m3
 
-
                     // Define component name outside the loops (doesn't change)
                     char compnam[4] = "NH3";
 
                     if (lu_type == "veg") {
-                        // Vegetation tile handling
                         for (int j=jstart; j<jend; ++j)
                             for (int i=istart; i<iend; ++i) {
                                 const int ij = i + j*jj;
@@ -375,8 +368,6 @@ namespace {
 
                                 if (fraction[ij] < (TF)1e-12)
                                     continue;
-                                // NEW: Automatic determination of land use type and SAI based on LAI
-                                // This allows DEPAC to use different parameters for grass vs forest
                                 int local_lu;
                                 TF local_sai;
 
@@ -399,12 +390,12 @@ namespace {
 
                                 // Keep IFS Ra and use vegetation Rb scaling
                                 const TF rb = TF(2.0) / (ckarman * ustar[ij]) * diff_scl[0];
+
 				                // Added this line to store rb
 				                deposition_tiles.at(lu_type).rb.data()[ij] = rb;
 
                                 //const TF nh3_ugm3 = nh3_concentration[ijk] * xmnh3 / 22.414 * 1.0e9; //mol/mol to ug/m3 conversion(STP)
                                 const TF nh3_ugm3 = nh3_concentration[ijk] * c_ug; // mol/mol to ug/m3 conversion
-
 
                                 // debug print for temperature, RH and NH3 concentration passed to depac
                                 //std::cout << "Grid points: i=" << i << ", j=" << j
@@ -418,13 +409,23 @@ namespace {
                                 //    << ", T=" << temperature-273.15
                                 //    << ", RH=" << rh << std::endl;
 
-                                // Call DEPAC wrapper for dry vegetation
-                                //char compnam[4] = "NH3";
-                                float rc_tot, ccomp_tot=0.0, rc_eff;
-                                float gsoil_eff_out, rsoil_eff_out;
-                                float gw_out, gstom_out;            // Added: conductance variables
-                                float cw_out, cstom_out, csoil_out; // Added: compensation point variables
-                                int status;
+                                // Conductance/resistance variables
+                                float rc_tot;           // total canopy resistance Rc (s/m)
+                                float ccomp_tot = 0.0;  // total compensation point (ug/m3)
+                                float rc_eff;           // effective total canopy resistance (s/m)
+                                float gsoil_eff_out;    // effective soil conductance (m/s)
+                                float rsoil_eff_out;    // effective soil resistance (s/m) - not directly in DEPAC interface
+                                float gw_out;           // external leaf surface conductance (m/s)
+                                float gstom_out;        // stomatal conductance (m/s)
+                                
+                                // Compensation point variables
+                                float cw_out;           // external leaf surface compensation point (ug/m3)
+                                // Note: cw vs. cw_out! "cw" is inverse of gw_out and is "external leaf surface resistance" 
+                                float cstom_out;        // stomatal compensation point (ug/m3)
+                                float csoil_out;        // soil compensation point (ug/m3)
+                                
+                                // Status indicator
+                                int status;             // error status (0 = success, >0 = error)
 
                                 // Initialize ccomp_tot with the override value or 0 if no override
                                 bool use_input_ccomp = false;
@@ -447,10 +448,10 @@ namespace {
                                         RH_a[ij],
                                         lai[ij],
                                         //sai,
-                                        local_sai,        // CHANGED: Use calculated SAI
-                                        nwet_veg,  // nwet = 0 for dry vegetation
+                                        local_sai,      // CHANGED: Use calculated SAI
+                                        nwet_veg,       // nwet = 0 for dry vegetation
                                         //lu,
-                                        local_lu,         // CHANGED: Use LAI-determined land use type
+                                        local_lu,       //CHANGED: Use LAI-determined land use type
                                         iratns,
                                         &rc_tot,
                                         &ccomp_tot,
@@ -466,51 +467,38 @@ namespace {
                                         &gsoil_eff_out,
                                         &rsoil_eff_out,
                                         pressure,
-                                        &gw_out,            // Added output variable
-                                        &gstom_out,         // Added output variable
-                                        &cw_out,            // Added output variable
-                                        &cstom_out,         // Added output variable
+                                        &gw_out,        
+                                        &gstom_out,    
+                                        &cw_out,      
+                                        &cstom_out,  
                                         &csoil_out,
                                         use_input_ccomp  // Pass the flag
                                 );
+                                // ccomp_tot = 5.0;
+                                // gw_out = 5.0;
+                                // gstom_out = 5.0;
+                                // gsoil_eff_out = 5.0;
+                                // gsoil_eff_out = 5.0;
+                                // cw_out; = 5.0;
+                                // cstom_out = 5.0;
+                                // csoil_out = 5.0;
+                                // rc_tot = 80.0;
+                                // rc_eff = 80.0;
 
-                                        // ccomp_tot = 5.0;
-                                        // gw_out = 5.0;
-                                        // gstom_out = 5.0;
-                                        // gsoil_eff_out = 5.0;
-                                        // gsoil_eff_out = 5.0;
-                                        // cw_out; = 5.0;
-                                        // cstom_out = 5.0;
-                                        // csoil_out = 5.0;
-                                        // rc_tot = 80.0;
-                                        // rc_eff = 80.0;
+                                if (status == STATUS_OK) {
+                                    deposition_tiles.at(lu_type).rc_tot.data()[ij] = rc_tot; // Store total canopy resistance Rc (s/m)
+                                    deposition_tiles.at(lu_type).ccomp_tot.data()[ij] = ccomp_tot; // Store ccomp_tot value
+                                    deposition_tiles.at(lu_type).rc_eff.data()[ij] = rc_eff; // Store effective total canopy resistance (s/m)
+                                    deposition_tiles.at(lu_type).csoil_eff.data()[ij] = (gsoil_eff_out > 0.0) ? (TF)1.0 / gsoil_eff_out : (TF)9999.0;  // Store effective soil resistance (inverting conductance)
+                                    deposition_tiles.at(lu_type).cw.data()[ij] = (gw_out > 0.0) ? (TF)1.0 / gw_out : (TF)9999.0; // Store external leaf resistance (inverting conductances)
+                                    deposition_tiles.at(lu_type).cstom.data()[ij] = (gstom_out > 0.0) ? (TF)1.0 / gstom_out : (TF)9999.0; // Store stomatal resistance (inverting conductance)
+                                    deposition_tiles.at(lu_type).cw_out.data()[ij] = cw_out; //Store external leaf surface compensation point (ug/m3)
+                                    deposition_tiles.at(lu_type).cstom_out.data()[ij] = cstom_out; //Store stomatal compensation point (ug/m3)
+                                    deposition_tiles.at(lu_type).csoil_out.data()[ij] = csoil_out; //Store stomatal conductance (m/s)
 
-                                        // Calculate deposition velocity using resistance analogy
-                                        if (status == STATUS_OK) {
-
-                                            // Store ccomp_tot value
-                                            deposition_tiles.at(lu_type).ccomp_tot.data()[ij] = ccomp_tot;
-
-                                            // Store resistances (inverting conductances)
-                                            deposition_tiles.at(lu_type).cw.data()[ij] = (gw_out > 0.0) ? 
-                                                (TF)1.0 / gw_out : (TF)9999.0;
-
-                                            deposition_tiles.at(lu_type).cstom.data()[ij] = (gstom_out > 0.0) ? 
-                                                (TF)1.0 / gstom_out : (TF)9999.0;
-
-                                            deposition_tiles.at(lu_type).csoil_eff.data()[ij] = (gsoil_eff_out > 0.0) ? 
-                                                (TF)1.0 / gsoil_eff_out : (TF)9999.0;
-
-                                            // Store compensation points directly
-                                            deposition_tiles.at(lu_type).cw_out.data()[ij] = cw_out;
-                                            deposition_tiles.at(lu_type).cstom_out.data()[ij] = cstom_out;
-                                            deposition_tiles.at(lu_type).csoil_out.data()[ij] = csoil_out;
-                                            deposition_tiles.at(lu_type).rc_tot.data()[ij] = rc_tot;
-                                            deposition_tiles.at(lu_type).rc_eff.data()[ij] = rc_eff;
-
-
-                                            vdnh3[ij] = (TF)1.0 / (ra[ij] + rb + rc_eff);
-                                        }
+                                    // Calculate deposition velocity using resistance analogy
+                                    vdnh3[ij] = (TF)1.0 / (ra[ij] + rb + rc_eff);
+                                }
                             }
                     }
                     else if (lu_type == "soil") {
@@ -519,7 +507,6 @@ namespace {
                             for (int i=istart; i<iend; ++i) {
                                 const int ij = i + j*jj;
                                 const int ijk = i + j*jj + kstart*ijcells;  // Added this for surface level
-
 
                                 //std::cout << "VEG tile: i=" << i << ", j=" << j << ", ijk=" << ijk << std::endl;
                                 //std::cout << "  NH3 conc = " << nh3_concentration[ijk]
@@ -532,19 +519,27 @@ namespace {
 
                                 // Use soil Rb scaling
                                 const TF rb = (TF)1.0 / (ckarman * ustar[ij]) * diff_scl[0];
+
 				                // Added this line to store rb
 				                deposition_tiles.at(lu_type).rb.data()[ij] = rb;
-
-                                //const TF nh3_ugm3 = nh3_concentration[ijk] * xmnh3 / 22.414 * 1.0e9; // mol/mol to ug/m3 conversion(STP)
                                 const TF nh3_ugm3 = nh3_concentration[ijk] * c_ug; // mol/mol to ug/m3 conversion
 
-                                // Call DEPAC wrapper for dry soil
-                                //char compnam[4] = "NH3";
-                                float rc_tot, ccomp_tot=0.0, rc_eff;
-                                float gsoil_eff_out, rsoil_eff_out;
-                                float gw_out, gstom_out;            // Added: conductance variables
-                                float cw_out, cstom_out, csoil_out; // Added: compensation point variables
-                                int status;
+                                float rc_tot;           // total canopy resistance Rc (s/m)
+                                float ccomp_tot = 0.0;  // total compensation point (ug/m3)
+                                float rc_eff;           // effective total canopy resistance (s/m)
+                                float gsoil_eff_out;    // effective soil conductance (m/s)
+                                float rsoil_eff_out;    // effective soil resistance (s/m) - not directly in DEPAC interface
+                                float gw_out;           // external leaf surface conductance (m/s)
+                                float gstom_out;        // stomatal conductance (m/s)
+                                
+                                // Compensation point variables
+                                float cw_out;           // external leaf surface compensation point (ug/m3)
+                                // Note: cw vs. cw_out! "cw" is inverse of gw_out and is "external leaf surface resistance" 
+                                float cstom_out;        // stomatal compensation point (ug/m3)
+                                float csoil_out;        // soil compensation point (ug/m3)
+                                
+                                // Status indicator
+                                int status;             // error status (0 = success, >0 = error)
 
                                 // Initialize ccomp_tot with the override value or 0 if no override
                                 bool use_input_ccomp = false;
@@ -554,7 +549,6 @@ namespace {
                                     ccomp_tot = ccomp_override_value;
                                     use_input_ccomp = true;
                                 }
-
 
                                 depac_wrapper(
                                         compnam,
@@ -584,36 +578,24 @@ namespace {
                                         &gsoil_eff_out,
                                         &rsoil_eff_out,
                                         pressure,
-                                        &gw_out,            // Added output variable
-                                        &gstom_out,         // Added output variable
-                                        &cw_out,            // Added output variable
-                                        &cstom_out,         // Added output variable
+                                        &gw_out,        
+                                        &gstom_out,    
+                                        &cw_out,      
+                                        &cstom_out,  
                                         &csoil_out,
                                         use_input_ccomp  // Pass the flag
                                 );
 
                                 if (status == STATUS_OK) {
-
-                                    // Store ccomp_tot value
-                                    deposition_tiles.at(lu_type).ccomp_tot.data()[ij] = ccomp_tot;
-
-                                    // Store resistances (inverting conductances)
-                                    deposition_tiles.at(lu_type).cw.data()[ij] = (gw_out > 0.0) ? 
-                                        (TF)1.0 / gw_out : (TF)9999.0;
-
-                                    deposition_tiles.at(lu_type).cstom.data()[ij] = (gstom_out > 0.0) ? 
-                                        (TF)1.0 / gstom_out : (TF)9999.0;
-
-                                    deposition_tiles.at(lu_type).csoil_eff.data()[ij] = (gsoil_eff_out > 0.0) ? 
-                                        (TF)1.0 / gsoil_eff_out : (TF)9999.0;
-
-                                    // Store compensation points directly
-                                    deposition_tiles.at(lu_type).cw_out.data()[ij] = cw_out;
-                                    deposition_tiles.at(lu_type).cstom_out.data()[ij] = cstom_out;
-                                    deposition_tiles.at(lu_type).csoil_out.data()[ij] = csoil_out;
-                                    deposition_tiles.at(lu_type).rc_tot.data()[ij] = rc_tot;
-                                    deposition_tiles.at(lu_type).rc_eff.data()[ij] = rc_eff;
-
+                                    deposition_tiles.at(lu_type).rc_tot.data()[ij] = rc_tot; // Store total canopy resistance Rc (s/m)
+                                    deposition_tiles.at(lu_type).ccomp_tot.data()[ij] = ccomp_tot; // Store ccomp_tot value
+                                    deposition_tiles.at(lu_type).rc_eff.data()[ij] = rc_eff; // Store effective total canopy resistance (s/m)
+                                    deposition_tiles.at(lu_type).csoil_eff.data()[ij] = (gsoil_eff_out > 0.0) ? (TF)1.0 / gsoil_eff_out : (TF)9999.0;  // Store effective soil resistance (inverting conductance)
+                                    deposition_tiles.at(lu_type).cw.data()[ij] = (gw_out > 0.0) ? (TF)1.0 / gw_out : (TF)9999.0; // Store external leaf resistance (inverting conductances)
+                                    deposition_tiles.at(lu_type).cstom.data()[ij] = (gstom_out > 0.0) ? (TF)1.0 / gstom_out : (TF)9999.0; // Store stomatal resistance (inverting conductance)
+                                    deposition_tiles.at(lu_type).cw_out.data()[ij] = cw_out; //Store external leaf surface compensation point (ug/m3)
+                                    deposition_tiles.at(lu_type).cstom_out.data()[ij] = cstom_out; //Store stomatal compensation point (ug/m3)
+                                    deposition_tiles.at(lu_type).csoil_out.data()[ij] = csoil_out; //Store stomatal conductance (m/s)
 
                                     vdnh3[ij] = (TF)1.0 / (ra[ij] + rb + rsoil_eff_out);
                                 }
@@ -625,7 +607,6 @@ namespace {
                             for (int i=istart; i<iend; ++i) {
                                 const int ij = i + j*jj;
                                 const int ijk = i + j*jj + kstart*ijcells;  // Added this for surface level
-
                                 const TF nh3_ugm3 = nh3_concentration[ijk] * c_ug; // mol/mol to ug/m3 conversion
 
                                 // std::cout << "VEG tile: i=" << i << ", j=" << j << ", ijk=" << ijk << std::endl;
@@ -637,12 +618,22 @@ namespace {
                                 if (fraction[ij] < (TF)1e-12)
                                     continue;
 
-                                //char compnam[4] = "NH3";
-                                float rc_tot, ccomp_tot=0.0, rc_eff;
-                                float gsoil_eff_out, rsoil_eff_out;
-                                float gw_out, gstom_out;            // Added: conductance variables
-                                float cw_out, cstom_out, csoil_out; // Added: compensation point variables
-                                int status;
+                                float rc_tot;           // total canopy resistance Rc (s/m)
+                                float ccomp_tot = 0.0;  // total compensation point (ug/m3)
+                                float rc_eff;           // effective total canopy resistance (s/m)
+                                float gsoil_eff_out;    // effective soil conductance (m/s)
+                                float rsoil_eff_out;    // effective soil resistance (s/m) - not directly in DEPAC interface
+                                float gw_out;           // external leaf surface conductance (m/s)
+                                float gstom_out;        // stomatal conductance (m/s)
+                                
+                                // Compensation point variables
+                                float cw_out;           // external leaf surface compensation point (ug/m3)
+                                // Note: cw vs. cw_out! "cw" is inverse of gw_out and is "external leaf surface resistance" 
+                                float cstom_out;        // stomatal compensation point (ug/m3)
+                                float csoil_out;        // soil compensation point (ug/m3)
+                                
+                                // Status indicator
+                                int status;             // error status (0 = success, >0 = error)
 
                                 // Initialize ccomp_tot with the override value or 0 if no override
                                 bool use_input_ccomp = false;
@@ -652,7 +643,6 @@ namespace {
                                     ccomp_tot = ccomp_override_value;
                                     use_input_ccomp = true;
                                 }
-
 
                                 if (c_veg[ij] > 0) {
                                     // NEW: Added same LAI-based determination for wet vegetation
@@ -668,12 +658,9 @@ namespace {
 
                                     // Wet vegetation case
                                     const TF rb = TF(2.0) / (ckarman * ustar[ij]) * diff_scl[0];
+
 				                    // Added this line to store rb
 				                    deposition_tiles.at(lu_type).rb.data()[ij] = rb;
-
-                                    //const TF nh3_ugm3 = nh3_concentration[ijk] * xmnh3 / 22.414 * 1.0e9; // mol/mol to ug/m3 conversion(STP)
-                                    //const TF nh3_ugm3 = nh3_concentration[ijk] * c_ug; // mol/mol to ug/m3 conversion
-
 
                                     depac_wrapper(
                                             compnam,
@@ -686,10 +673,10 @@ namespace {
                                             RH_a[ij],
                                             lai[ij],
                                             //sai,
-                                            local_sai,        // CHANGED: Use calculated SAI
-                                            nwet_wet,  // nwet = 1 for wet conditions
-                                                //lu,
-                                            local_lu,         // CHANGED: Use LAI-determined land use type
+                                            local_sai,      // CHANGED: Use calculated SAI
+                                            nwet_wet,       // nwet = 1 for wet conditions
+                                            //lu,
+                                            local_lu,       // CHANGED: Use LAI-determined land use type
                                             iratns,
                                             &rc_tot,
                                             &ccomp_tot,
@@ -705,36 +692,24 @@ namespace {
                                             &gsoil_eff_out,
                                             &rsoil_eff_out,
                                             pressure,
-                                            &gw_out,            // Added output variable
-                                            &gstom_out,         // Added output variable
-                                            &cw_out,            // Added output variable
-                                            &cstom_out,         // Added output variable
+                                            &gw_out,        
+                                            &gstom_out,    
+                                            &cw_out,      
+                                            &cstom_out,  
                                             &csoil_out,
                                             use_input_ccomp  // Pass the flag
                                     );
 
                                             if (status == STATUS_OK) {
-
-                                                // Store ccomp_tot value
-                                                deposition_tiles.at(lu_type).ccomp_tot.data()[ij] = ccomp_tot;
-
-                                                // Store resistances (inverting conductances)
-                                                deposition_tiles.at(lu_type).cw.data()[ij] = (gw_out > 0.0) ? 
-                                                    (TF)1.0 / gw_out : (TF)9999.0;
-
-                                                deposition_tiles.at(lu_type).cstom.data()[ij] = (gstom_out > 0.0) ? 
-                                                    (TF)1.0 / gstom_out : (TF)9999.0;
-
-                                                deposition_tiles.at(lu_type).csoil_eff.data()[ij] = (gsoil_eff_out > 0.0) ? 
-                                                    (TF)1.0 / gsoil_eff_out : (TF)9999.0;
-
-                                                // Store compensation points directly
-                                                deposition_tiles.at(lu_type).cw_out.data()[ij] = cw_out;
-                                                deposition_tiles.at(lu_type).cstom_out.data()[ij] = cstom_out;
-                                                deposition_tiles.at(lu_type).csoil_out.data()[ij] = csoil_out;
-                                                deposition_tiles.at(lu_type).rc_tot.data()[ij] = rc_tot;
-                                                deposition_tiles.at(lu_type).rc_eff.data()[ij] = rc_eff;
-
+                                                deposition_tiles.at(lu_type).rc_tot.data()[ij] = rc_tot; // Store total canopy resistance Rc (s/m)
+                                                deposition_tiles.at(lu_type).ccomp_tot.data()[ij] = ccomp_tot; // Store ccomp_tot value
+                                                deposition_tiles.at(lu_type).rc_eff.data()[ij] = rc_eff; // Store effective total canopy resistance (s/m)
+                                                deposition_tiles.at(lu_type).csoil_eff.data()[ij] = (gsoil_eff_out > 0.0) ? (TF)1.0 / gsoil_eff_out : (TF)9999.0;  // Store effective soil resistance (inverting conductance)
+                                                deposition_tiles.at(lu_type).cw.data()[ij] = (gw_out > 0.0) ? (TF)1.0 / gw_out : (TF)9999.0; // Store external leaf resistance (inverting conductances)
+                                                deposition_tiles.at(lu_type).cstom.data()[ij] = (gstom_out > 0.0) ? (TF)1.0 / gstom_out : (TF)9999.0; // Store stomatal resistance (inverting conductance)
+                                                deposition_tiles.at(lu_type).cw_out.data()[ij] = cw_out; //Store external leaf surface compensation point (ug/m3)
+                                                deposition_tiles.at(lu_type).cstom_out.data()[ij] = cstom_out; //Store stomatal compensation point (ug/m3)
+                                                deposition_tiles.at(lu_type).csoil_out.data()[ij] = csoil_out; //Store stomatal conductance (m/s)
 
                                                 vdnh3[ij] = (TF)1.0 / (ra[ij] + rb + rc_eff);
                                             }
@@ -744,9 +719,6 @@ namespace {
                                     const TF rb = (TF)1.0 / (ckarman * ustar[ij]) * diff_scl[0];
 				                    // Added this line to store rb
 				                    deposition_tiles.at(lu_type).rb.data()[ij] = rb;
-
-                                    //const TF nh3_ugm3 = nh3_concentration[ijk] * xmnh3 / 22.414 * 1.0e9; //mol/mol to ug/m3 conversion(STP)
-                                    //const TF nh3_ugm3 = nh3_concentration[ijk] * c_ug; // mol/mol to ug/m3 conversion
 
                                     depac_wrapper(
                                             compnam,
@@ -776,35 +748,24 @@ namespace {
                                             &gsoil_eff_out,
                                             &rsoil_eff_out,
                                             pressure,
-                                            &gw_out,            // Added output variable
-                                            &gstom_out,         // Added output variable
-                                            &cw_out,            // Added output variable
-                                            &cstom_out,         // Added output variable
+                                            &gw_out,          
+                                            &gstom_out,      
+                                            &cw_out,        
+                                            &cstom_out,    
                                             &csoil_out,
                                             use_input_ccomp  // Pass the flag
                                     );
 
                                     if (status == STATUS_OK) {
-                                        // Store ccomp_tot value
-                                        deposition_tiles.at(lu_type).ccomp_tot.data()[ij] = ccomp_tot;
-
-                                        // Store resistances (inverting conductances)
-                                        deposition_tiles.at(lu_type).cw.data()[ij] = (gw_out > 0.0) ? 
-                                            (TF)1.0 / gw_out : (TF)9999.0;
-
-                                        deposition_tiles.at(lu_type).cstom.data()[ij] = (gstom_out > 0.0) ? 
-                                            (TF)1.0 / gstom_out : (TF)9999.0;
-
-                                        deposition_tiles.at(lu_type).csoil_eff.data()[ij] = (gsoil_eff_out > 0.0) ? 
-                                            (TF)1.0 / gsoil_eff_out : (TF)9999.0;
-
-                                        // Store compensation points directly
-                                        deposition_tiles.at(lu_type).cw_out.data()[ij] = cw_out;
-                                        deposition_tiles.at(lu_type).cstom_out.data()[ij] = cstom_out;
-                                        deposition_tiles.at(lu_type).csoil_out.data()[ij] = csoil_out;
-                                        deposition_tiles.at(lu_type).rc_tot.data()[ij] = rc_tot;
-                                        deposition_tiles.at(lu_type).rc_eff.data()[ij] = rc_eff;
-
+                                        deposition_tiles.at(lu_type).rc_tot.data()[ij] = rc_tot; // Store total canopy resistance Rc (s/m)
+                                        deposition_tiles.at(lu_type).ccomp_tot.data()[ij] = ccomp_tot; // Store ccomp_tot value
+                                        deposition_tiles.at(lu_type).rc_eff.data()[ij] = rc_eff; // Store effective total canopy resistance (s/m)
+                                        deposition_tiles.at(lu_type).csoil_eff.data()[ij] = (gsoil_eff_out > 0.0) ? (TF)1.0 / gsoil_eff_out : (TF)9999.0;  // Store effective soil resistance (inverting conductance)
+                                        deposition_tiles.at(lu_type).cw.data()[ij] = (gw_out > 0.0) ? (TF)1.0 / gw_out : (TF)9999.0; // Store external leaf resistance (inverting conductances)
+                                        deposition_tiles.at(lu_type).cstom.data()[ij] = (gstom_out > 0.0) ? (TF)1.0 / gstom_out : (TF)9999.0; // Store stomatal resistance (inverting conductance)
+                                        deposition_tiles.at(lu_type).cw_out.data()[ij] = cw_out; //Store external leaf surface compensation point (ug/m3)
+                                        deposition_tiles.at(lu_type).cstom_out.data()[ij] = cstom_out; //Store stomatal compensation point (ug/m3)
+                                        deposition_tiles.at(lu_type).csoil_out.data()[ij] = csoil_out; //Store stomatal conductance (m/s)
 
                                         vdnh3[ij] = (TF)1.0 / (ra[ij] + rb + rsoil_eff_out);
                                     }
@@ -812,7 +773,6 @@ namespace {
                             }
                     }
                 }
-
 
     template<typename TF>
     void calc_deposition_per_tile(
