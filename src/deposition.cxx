@@ -79,7 +79,7 @@ namespace {
                 const int icells)
         {
             for (int j=jstart; j<jend; ++j)
-#pragma ivdep
+            #pragma ivdep
                 for (int i=istart; i<iend; ++i)
                 {
                     const int ij  = i + j*icells;
@@ -106,7 +106,7 @@ namespace {
             const TF ckarman = 0.4;
 
             for (int j=jstart; j<jend; ++j)
-#pragma ivdep
+            #pragma ivdep
                 for (int i=istart; i<iend; ++i)
                 {
                     const int ij = i + j*icells;
@@ -285,16 +285,16 @@ namespace {
                 const TF lat,           // Latitude [degrees]
                 const int day_of_year,  // Day of year
                 const int nwet,         // Surface wetness
-    		const int nwet_veg,      // Add these three parameters
-    		const int nwet_soil,
-    		const int nwet_wet,
+    		    const int nwet_veg,      // Add these three parameters
+    		    const int nwet_soil,
+    		    const int nwet_wet,
                 const int lu,           // Land use type
                 const int iratns,       // NH3 compensation point option
                 const TF hlaw,          // Henry's law constant
                 const TF react,         // Reactivity factor
                 const TF c_ave_prev_nh3, // Previous NH3 concentration
                 const TF catm,          // Atmospheric NH3 concentration
-        	const TF c_ug,          // Concentration conversion factor
+        	    const TF c_ug,          // Concentration conversion factor
                 const TF pressure,      // Added pressure parameter
                 const bool sw_override_ccomp,        // NEW parameter
                 const TF ccomp_override_value,       // NEW parameter
@@ -363,8 +363,8 @@ namespace {
 
                                 // Keep IFS Ra and use vegetation Rb scaling
                                 const TF rb = TF(2.0) / (ckarman * ustar[ij]) * diff_scl[0];
-				// Added this line to store rb
-				deposition_tiles.at(lu_type).rb.data()[ij] = rb;
+				                // Added this line to store rb
+				                deposition_tiles.at(lu_type).rb.data()[ij] = rb;
 
                                 //const TF nh3_ugm3 = nh3_concentration[ijk] * xmnh3 / 22.414 * 1.0e9; //mol/mol to ug/m3 conversion(STP)
                                 const TF nh3_ugm3 = nh3_concentration[ijk] * c_ug; // mol/mol to ug/m3 conversion
@@ -496,8 +496,8 @@ namespace {
 
                                 // Use soil Rb scaling
                                 const TF rb = (TF)1.0 / (ckarman * ustar[ij]) * diff_scl[0];
-				// Added this line to store rb
-				deposition_tiles.at(lu_type).rb.data()[ij] = rb;
+				                // Added this line to store rb
+				                deposition_tiles.at(lu_type).rb.data()[ij] = rb;
 
                                 //const TF nh3_ugm3 = nh3_concentration[ijk] * xmnh3 / 22.414 * 1.0e9; // mol/mol to ug/m3 conversion(STP)
                                 const TF nh3_ugm3 = nh3_concentration[ijk] * c_ug; // mol/mol to ug/m3 conversion
@@ -632,8 +632,8 @@ namespace {
 
                                     // Wet vegetation case
                                     const TF rb = TF(2.0) / (ckarman * ustar[ij]) * diff_scl[0];
-				    // Added this line to store rb
-				    deposition_tiles.at(lu_type).rb.data()[ij] = rb;
+				                    // Added this line to store rb
+				                    deposition_tiles.at(lu_type).rb.data()[ij] = rb;
 
                                     //const TF nh3_ugm3 = nh3_concentration[ijk] * xmnh3 / 22.414 * 1.0e9; // mol/mol to ug/m3 conversion(STP)
                                     //const TF nh3_ugm3 = nh3_concentration[ijk] * c_ug; // mol/mol to ug/m3 conversion
@@ -706,8 +706,8 @@ namespace {
                                 else {
                                     // Wet soil case
                                     const TF rb = (TF)1.0 / (ckarman * ustar[ij]) * diff_scl[0];
-				    // Added this line to store rb
-				    deposition_tiles.at(lu_type).rb.data()[ij] = rb;
+				                    // Added this line to store rb
+				                    deposition_tiles.at(lu_type).rb.data()[ij] = rb;
 
                                     //const TF nh3_ugm3 = nh3_concentration[ijk] * xmnh3 / 22.414 * 1.0e9; //mol/mol to ug/m3 conversion(STP)
                                     //const TF nh3_ugm3 = nh3_concentration[ijk] * c_ug; // mol/mol to ug/m3 conversion
@@ -943,13 +943,13 @@ Deposition<TF>::Deposition(Master& masterin, Grid<TF>& gridin, Fields<TF>& field
 }
 
 
-    template <typename TF>
+template <typename TF>
 Deposition<TF>::~Deposition()
 {
 }
 
 
-    template <typename TF>
+template <typename TF>
 void Deposition<TF>::init(Input& inputin)
 {
     // Always read the default deposition velocities. They are needed by 
@@ -1078,7 +1078,7 @@ void Deposition<TF>::init(Input& inputin)
     }
 }
 
-    template <typename TF>
+template <typename TF>
 void Deposition<TF>::create(Stats<TF>& stats, Cross<TF>& cross)
 {
     if (!sw_deposition)
@@ -1203,8 +1203,16 @@ void Deposition<TF>::update_time_dependent(
                                                            ///  //std::cout << "Temperature from MicroHH (K): " << temperature << std::endl;
                                                            ///  //std::cout << "Temperature passed to DEPAC (C): " << temperature << std::endl;
 
-    // Extract temperature field
+    // Ask the fields object for a temporary field (a kind of temporary storage or workspace) 
+    // and store it in a variable called tmp2.
+    // 'fields' is an object that manages field data (like velocity, pressure, etc.)
+
     auto tmp2 = fields.get_tmp();
+
+    // Send the temporary field tmp2 to the thermo object.
+    // Ask thermo to fill that field with the temperature field, "T".
+
+    // 'thermo' is an object that calculates thermodynamic properties (like temperature)
     thermo.get_thermo_field(*tmp2, "T", true, false);
     
     // Extract temperature at kstart level into 2D array
@@ -1752,7 +1760,7 @@ void Deposition<TF>::get_tiled_mean(
             gd.icells);
 }
 
-    template<typename TF>
+template<typename TF>
 void Deposition<TF>::update_vd_water(
         TF* restrict fld_out, std::string name,
         const TF* const restrict ra,
@@ -1830,7 +1838,7 @@ void Deposition<TF>::update_vd_water(
             gd.icells);
 }
 
-    template<typename TF>
+template<typename TF>
 void Deposition<TF>::spatial_avg_vd(
         TF* restrict fld_out)
 {
