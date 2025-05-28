@@ -806,7 +806,7 @@ namespace {
             const TF lat,
             const int day_of_year,
             const int nwet,
-    	    const int nwet_veg,      // Add these three parameters
+    	    const int nwet_veg,      
     	    const int nwet_soil,
     	    const int nwet_wet,
             const int lu,
@@ -852,7 +852,7 @@ namespace {
                     lat,
                     day_of_year,
                     nwet,
-		            nwet_veg,      // Pass the class member variables
+		            nwet_veg, 
     		        nwet_soil,
     		        nwet_wet,
                     lu,
@@ -896,14 +896,33 @@ namespace {
     }
 }
 
-
+/*
+ * The following is a constructor for the Deposition class
+ *
+ * Constructor - Initializes deposition model and parameters
+ * 
+ * What the Constructor Does:
+ * 1. Reads configuration settings from input file:
+ *    - sw_deposition: Boolean flag to enable/disable deposition
+ *    - use_depac: Boolean flag to choose between DEPAC and original model
+ *
+ * 2. Logs which deposition model is being used (DEPAC vs original)
+ *
+ * 3. Initializes DEPAC-specific parameters by reading them from the input file:
+ *    - iratns: NH3/SO2 ratio regime
+ *    - hlaw: Henry's law constant  
+ *    - react: Reactivity factor
+ *    - c_ave_prev_nh3: Previous NH3 concentration
+ *    - Various wetness parameters (nwet_veg, nwet_soil, etc.)
+ *
+ * 4. Sets up override options for compensation points
+ */
 template<typename TF>
 Deposition<TF>::Deposition(Master& masterin, Grid<TF>& gridin, Fields<TF>& fieldsin, 
         Radiation<TF>& radiationin, Input& inputin) :
     master(masterin), grid(gridin), fields(fieldsin), radiation(radiationin)
 {
     sw_deposition = inputin.get_item<bool>("deposition", "swdeposition", "", false);
-
     use_depac = inputin.get_item<bool>("deposition", "use_depac", "", true);  // Default to DEPAC
 
     // Log which mode is being used
@@ -914,12 +933,9 @@ Deposition<TF>::Deposition(Master& masterin, Grid<TF>& gridin, Fields<TF>& field
             master.print_message("Deposition: Using original model for NH3 deposition\n");
         }
     }
-
     // Added: Initialize DEPAC parameters for NH3 deposition
-
-    // Time and surface condition parameters
-    iratns = inputin.get_item<int>("deposition", "iratns", "");                    // NH3 compensation point option
-    hlaw = inputin.get_item<TF>("deposition", "hlaw", "");                 //rmes = 1/(henry/3000.+100.*react)  ! Wesely '89, eq. 6
+    iratns = inputin.get_item<int>("deposition", "iratns", ""); 
+    hlaw = inputin.get_item<TF>("deposition", "hlaw", "");     
     react = inputin.get_item<TF>("deposition", "react", "");                 // Reactivity factor
     c_ave_prev_nh3 = inputin.get_item<TF>("deposition", "c_ave_prev_nh3", ""); // Previous NH3 concentration (mol/mol, then it converts to ug/m3)
     pressure = inputin.get_item<TF>("thermo", "pbot", "");  // Get pressure from thermo settings
@@ -938,12 +954,11 @@ Deposition<TF>::Deposition(Master& masterin, Grid<TF>& gridin, Fields<TF>& field
 
 }
 
-
+// The destructor for the Deposition class
 template <typename TF>
 Deposition<TF>::~Deposition()
 {
 }
-
 
 template <typename TF>
 void Deposition<TF>::init(Input& inputin)
