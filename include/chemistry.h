@@ -110,9 +110,9 @@ class Chemistry
 
         // New arrays for concentration scaling and fluxes
         std::vector<TF> c_star_1;       // Scaled concentration parameter C*_1
-        std::vector<TF> c_star_2;       // Scaled concentration parameter using simple log formula
+        std::vector<TF> c_star_2;       // Simple log formula concentration parameter C*_2  
+        std::vector<TF> c_diff_nh3;     // Difference between NH3[kstart] and c_star_1
         std::vector<TF> c_ref;          // Reference concentration at z_ref = 50*z0
-        std::vector<TF> c_diff_nh3;     // Difference between NH3 at kstart and c_star_1
         std::vector<TF> flux_inst_cstar; // Instantaneous flux using c_star_1
         std::vector<TF> flux_inst_cref;  // Instantaneous flux using c_ref
 };

@@ -42,6 +42,7 @@
 #include "boundary.h"
 #include "cross.h"
 #include <vector> 
+#include "monin_obukhov.h"
 
 namespace
 {
@@ -74,107 +75,202 @@ namespace
         return std::make_pair(time_dim, time_dim_length);
     }
 
+// Updated PSS function with concentration scaling calculations
 
-
-template<typename TF>
-        void pss(
-                TF* restrict tnh3,
-                const TF* const restrict nh3,
-                const TF* const restrict jval,
-                const TF* const restrict emval,
-                const TF* const restrict vdnh3,
-                const TF* const restrict tprof,
-                const TF* const restrict qprof,
-                const TF* const restrict dzi,
-                const TF* const restrict rhoref,
-                TF* restrict rfa,
-                TF* restrict flux_nh3,  // New parameter for flux
-                TF* restrict flux_inst, // Add this line for instantaneous flux
-                TF& trfa,
-                const TF dt,
-                const TF sdt,
-                const TF lifetime,
-                const int istart, const int iend,
-                const int jstart, const int jend,
-                const int kstart, const int kend,
-                const int jstride, const int kstride,
-                const TF dx,
-                const TF dy)
+namespace
+{
+    template<typename TF>
+    void pss(
+            TF* restrict tnh3,
+            const TF* const restrict nh3,
+            const TF* const restrict jval,
+            const TF* const restrict emval,
+            const TF* const restrict vdnh3,
+            const TF* const restrict tprof,
+            const TF* const restrict qprof,
+            const TF* const restrict dzi,
+            const TF* const restrict rhoref,
+            const TF* const restrict z,       // Add grid height levels
+            const TF* const restrict obuk,    // Add Obukhov length (from surface)
+            const TF* const restrict z0m,     // Add surface roughness length
+            TF* restrict rfa,
+            TF* restrict flux_nh3,  // For accumulated flux
+            TF* restrict flux_inst, // For instantaneous flux
+            TF* restrict c_star_1,  // Add parameter for c_star_1
+            TF* restrict c_star_2,  // Add parameter for c_star_2 (simple log formula)
+            TF* restrict c_ref,     // Add parameter for c_ref
+            TF* restrict c_diff_nh3, // Difference between NH3[kstart] and c_star_1
+            TF* restrict flux_inst_cstar, // Add parameter for c_star_1 flux
+            TF* restrict flux_inst_cref,  // Add parameter for c_ref flux
+            TF& trfa,
+            const TF dt,
+            const TF sdt,
+            const TF lifetime,
+            const int istart, const int iend,
+            const int jstart, const int jend,
+            const int kstart, const int kend,
+            const int jstride, const int kstride,
+            const TF dx,
+            const TF dy)
+    {
+        const TF xmh2o = 18.015265;
+        const TF xmnh3 = 17.031;
+        const TF xmh2o_i = TF(1) / xmh2o;
+        const TF xmair = 28.9647;       // Molar mass of dry air  [kg kmol-1]
+        const TF xmair_i = TF(1) / xmair;
+        const TF Na = 6.02214086e23; // Avogadros number [molecules mol-1]
+    
+        // Update the time integration of the reaction fluxes with the full timestep on first RK3 step
+        //if (abs(sdt/dt - 1./3.) < 1e-5) trfa += dt;
+        trfa += sdt;
+    
+        // Import Monin_obukhov namespace for stability functions
+        namespace most = Monin_obukhov;
+    
+        for (int k=kstart; k<kend; ++k)
+        {
+            const TF C_M = TF(1e-3) * rhoref[k] * Na * xmair_i;   // molecules/cm3 for chmistry!
+    
+            // From ppb (units mixing ratio) to molecules/cm3 --> changed: now mol/mol unit for transported tracers:
+            const TF CFACTOR = C_M;
+            const TF sdt_cfac_i = TF(1) / (sdt * CFACTOR);
+            const TF lti = TF(1)/lifetime;  // 1/s
+            TF decay;
+            for (int j=jstart; j<jend; ++j)
+            #pragma ivdep
+                for (int i=istart; i<iend; ++i)
                 {
-
-                    const TF xmh2o = 18.015265;
-                    const TF xmnh3 = 17.031;
-                    const TF xmh2o_i = TF(1) / xmh2o;
-                    const TF xmair = 28.9647;       // Molar mass of dry air  [kg kmol-1]
-                    const TF xmair_i = TF(1) / xmair;
-                    const TF Na = 6.02214086e23; // Avogadros number [molecules mol-1]
-
-
-                    // Update the time integration of the reaction fluxes with the full timestep on first RK3 step
-                    //if (abs(sdt/dt - 1./3.) < 1e-5) trfa += dt;
-                    trfa += sdt;
-
-                    for (int k=kstart; k<kend; ++k)
+                    const int ijk = i + j*jstride + k*kstride;
+                    const int ij = i + j*jstride;
+    
+                    // kg/kg --> molH2O/molAir --*C_M--> molecules/cm3 limit to 1 molecule/cm3 to avoid error usr_HO2_HO2
+                    // const TF C_H2O = std::max(qt[ijk] * xmair * C_M * xmh2o_i, TF(1));
+                    // const TF TEMP = temp[ijk];
+    
+                    if (k==kstart)
                     {
-                        const TF C_M = TF(1e-3) * rhoref[k] * Na * xmair_i;   // molecules/cm3 for chmistry!
-
-                        // From ppb (units mixing ratio) to molecules/cm3 --> changed: now mol/mol unit for transported tracers:
-                        const TF CFACTOR = C_M;
-                        const TF sdt_cfac_i = TF(1) / (sdt * CFACTOR);
-                        const TF lti = TF(1)/lifetime;  // 1/s
-                        TF decay;
-                        for (int j=jstart; j<jend; ++j)
-#pragma ivdep
-                            for (int i=istart; i<iend; ++i)
+                        // Calculate and accumulate flux for this RK3 step
+                        // Note: flux is accumulated (+=) and scaled by sdt
+    
+                        //TF flux = (-1.0) * vdnh3[ij] * nh3[ijk] * rhoref[k] * xmair_i * xmnh3 * sdt; // [kg(NH3) m-2 s-1]
+                        //TF flux[ij] = (-1.0) * 1.0e3 * vdnh3[ij] * nh3[ijk] * rhoref[k] * xmair_i * sdt; // [mol(NH3) m-2 s-1 * sdt!!!]
+                        //flux_nh3[ij] = (-1.0) * 1.0e3 * vdnh3[ij] * nh3[ijk] * rhoref[k] * xmair_i * sdt; // [mol(NH3) m-2 s-1 * sdt!!!]
+    
+                        // Calculate instantaneous flux first (original method)
+                        flux_inst[ij] = (-1.0) * vdnh3[ij] * nh3[ijk] * rhoref[k] * xmair_i * xmnh3; // [kg(NH3) m-2 s-1]
+    
+                        // Add new concentration scaling calculations
+                        // Get concentrations at two vertical levels (kstart and kstart+1)
+                        const int ijk1 = i + j*jstride + kstart*kstride;
+                        const int ijk2 = i + j*jstride + (kstart+1)*kstride;
+                        
+                        const TF c_1 = nh3[ijk1];
+                        const TF c_2 = nh3[ijk2];
+                        
+                        // Heights at the two levels
+                        const TF z_1 = z[kstart];
+                        const TF z_2 = z[kstart+1];
+                        const TF kappa = 0.41; //Von Kármán constant
+                        
+                        // Calculate c_star_2 using simple logarithmic formula (no stability correction)
+                        if (std::abs(log(z_2/z_1)) > TF(1e-10))
+                        {
+                            c_star_2[ij] = kappa * (c_2 - c_1) / log(z_2/z_1);
+                        }
+                        else
+                        {
+                            c_star_2[ij] = TF(0.0);  // Avoid division by zero
+                        }
+                        
+                        // Obukhov length from surface
+                        const TF L = obuk[ij];
+                        
+                        // Only calculate when Obukhov length is not near zero
+                        if (std::abs(L) > TF(1e-10))
+                        {
+                            // Calculate z/L for both heights
+                            const TF z_over_L_1 = z_1 / L;
+                            const TF z_over_L_2 = z_2 / L;
+                            
+                            // Use MicroHH's stability functions
+                            const TF psi_1 = (z_over_L_1 <= TF(0)) ? 
+                                most::psih_unstable(z_over_L_1) : 
+                                most::psih_stable(z_over_L_1);
+                            
+                            const TF psi_2 = (z_over_L_2 <= TF(0)) ? 
+                                most::psih_unstable(z_over_L_2) : 
+                                most::psih_stable(z_over_L_2);
+                            
+                            // Calculate C*_1 directly using the formula
+                            if (std::abs(log(z_2/z_1) - psi_2 + psi_1) > TF(1e-10))
                             {
-                                const int ijk = i + j*jstride + k*kstride;
-                                const int ij = i + j*jstride;
-
-                                // kg/kg --> molH2O/molAir --*C_M--> molecules/cm3 limit to 1 molecule/cm3 to avoid error usr_HO2_HO2
-                                // const TF C_H2O = std::max(qt[ijk] * xmair * C_M * xmh2o_i, TF(1));
-                                // const TF TEMP = temp[ijk];
-
-                                if (k==kstart)
-                                {
-                                    // Calculate and accumulate flux for this RK3 step
-                                    // Note: flux is accumulated (+=) and scaled by sdt
-
-                                    //TF flux = (-1.0) * vdnh3[ij] * nh3[ijk] * rhoref[k] * xmair_i * xmnh3 * sdt; // [kg(NH3) m-2 s-1]
-                                    //TF flux[ij] = (-1.0) * 1.0e3 * vdnh3[ij] * nh3[ijk] * rhoref[k] * xmair_i * sdt; // [mol(NH3) m-2 s-1 * sdt!!!]
-                                    //flux_nh3[ij] = (-1.0) * 1.0e3 * vdnh3[ij] * nh3[ijk] * rhoref[k] * xmair_i * sdt; // [mol(NH3) m-2 s-1 * sdt!!!]
-
-
-                                    // Calculate instantaneous flux first
-                                    flux_inst[ij] = (-1.0) * vdnh3[ij] * nh3[ijk] * rhoref[k] * xmair_i * xmnh3; // [kg(NH3) m-2 s-1]
-
-                                    // Then calculate accumulated flux using the instantaneous value
-                                    TF flux = flux_inst[ij] * sdt; // Scale by timestep for accumulation
-
-                                    //TF flux = (-1.0) * vdnh3[ij] * nh3[ijk] * rhoref[k] * xmair_i * xmnh3 * sdt; // [kg(NH3) m-2 s-1] 
-                                    flux_nh3[ij] += flux;        // For period statistics
-                                    decay = vdnh3[ij]*dzi[k] + lti;   // 1/s
-                                }
-                                else
-                                { 
-                                    decay = lti; // 1/s
-                                }
-                                // update tendencies:
-                                tnh3[ijk] -= decay*nh3[ijk];
-
-                                // Get statistics for reaction fluxes:
-                                //if (abs(sdt/dt - 1./3.) < 1e-5)
-                                //{
-                                //    for (int l=0; l<NREACT; ++l)
-                                //        rfa[(k-kstart)*NREACT+l] +=  RF[l]*dt;    // take the first evaluation in the RK3 steps, but with full time step.
-                                //}
-
-                                //  Reculculate tendency and add to the tendency of the transported tracers:
-
-
-                            } // i
-                    } // k
-                }
+                                c_star_1[ij] = kappa * (c_2 - c_1) / (log(z_2/z_1) - psi_2 + psi_1);
+                                
+                                // Calculate difference between NH3 at kstart and c_star_1
+                                c_diff_nh3[ij] = c_1 - c_star_1[ij];
+                                
+                                // Get roughness length (z0) from the surface model
+                                const TF z_0 = z0m[ij];
+                                
+                                //// Calculate reference height as 50*z0
+                                //const TF z_ref = TF(50.0) * z_0;
+                                const TF z_ref = 25.0; //Since forest is the roughest surface, its RSL is deepest. To ensure consistency across land types z_ref>3.h=22.5 ==> z_ref=25 meters
+                                
+                                // Calculate z/L for reference height
+                                const TF z_over_L_ref = z_ref / L;
+                                
+                                // Use MicroHH's stability function for reference height
+                                const TF psi_ref = (z_over_L_ref <= TF(0)) ? 
+                                    most::psih_unstable(z_over_L_ref) : 
+                                    most::psih_stable(z_over_L_ref);
+                                
+                                // Calculate C_ref (reference concentration) directly using the formula
+                                c_ref[ij] = c_1 + c_star_1[ij] * (log(z_ref/z_1) - psi_ref + psi_1) / kappa;
+                                
+                                // Calculate fluxes using the new concentrations
+                                flux_inst_cstar[ij] = (-1.0) * vdnh3[ij] * c_star_1[ij] * rhoref[k] * xmair_i * xmnh3; // [kg(NH3) m-2 s-1]
+                                flux_inst_cref[ij] = (-1.0) * vdnh3[ij] * c_ref[ij] * rhoref[k] * xmair_i * xmnh3; // [kg(NH3) m-2 s-1]
+                            }
+                            else
+                            {
+                                // If the denominator is too small, leave arrays as they are (initialized to zero)
+                                c_diff_nh3[ij] = c_1 - c_star_1[ij]; // c_star_1[ij] would be 0 in this case
+                            }
+                        }
+                        else
+                        {
+                            // If Obukhov length is too small, leave arrays as they are (initialized to zero)
+                            c_diff_nh3[ij] = c_1 - c_star_1[ij]; // c_star_1[ij] would be 0 in this case
+                        }
+    
+                        // Then calculate accumulated flux using the instantaneous value
+                        TF flux = flux_inst[ij] * sdt; // Scale by timestep for accumulation
+    
+                        //TF flux = (-1.0) * vdnh3[ij] * nh3[ijk] * rhoref[k] * xmair_i * xmnh3 * sdt; // [kg(NH3) m-2 s-1] 
+                        flux_nh3[ij] += flux;        // For period statistics
+                        decay = vdnh3[ij]*dzi[k] + lti;   // 1/s
+                    }
+                    else
+                    { 
+                        decay = lti; // 1/s
+                    }
+                    // update tendencies:
+                    tnh3[ijk] -= decay*nh3[ijk];
+    
+                    // Get statistics for reaction fluxes:
+                    //if (abs(sdt/dt - 1./3.) < 1e-5)
+                    //{
+                    //    for (int l=0; l<NREACT; ++l)
+                    //        rfa[(k-kstart)*NREACT+l] +=  RF[l]*dt;    // take the first evaluation in the RK3 steps, but with full time step.
+                    //}
+    
+                    //  Reculculate tendency and add to the tendency of the transported tracers:
+                } // i
+        } // k
+    }
 }
+}
+
 
 template<typename TF>
 Chemistry<TF>::Chemistry(Master& masterin, Grid<TF>& gridin, Fields<TF>& fieldsin, Radiation<TF>& radiationin, Input& inputin):
@@ -192,7 +288,7 @@ Chemistry<TF>::Chemistry(Master& masterin, Grid<TF>& gridin, Fields<TF>& fieldsi
     deposition = std::make_shared<Deposition <TF>>(masterin, gridin, fieldsin, radiationin, inputin);
 }
 
-    template <typename TF>
+template <typename TF>
 Chemistry<TF>::~Chemistry()
 {
 }
@@ -223,6 +319,13 @@ void Chemistry<TF>::exec_stats(const int iteration, const double time, Stats<TF>
 
         stats.calc_stats_2d("flux_nh3", flux_nh3, no_offset); //added for nh3_flux
         stats.calc_stats_2d("flux_inst", flux_inst, no_offset); // added for instantaneous deposition flux of NH3
+        // Calculate statistics for new variables
+        stats.calc_stats_2d("c_star_1", c_star_1, no_offset);
+        stats.calc_stats_2d("c_star_2", c_star_2, no_offset);
+        stats.calc_stats_2d("c_ref", c_ref, no_offset);
+        stats.calc_stats_2d("c_diff_nh3", c_ref, no_offset);
+        stats.calc_stats_2d("flux_inst_cstar", flux_inst_cstar, no_offset);
+        stats.calc_stats_2d("flux_inst_cref", flux_inst_cref, no_offset);
 
 
         // Reset the periodic flux after saving to stats
@@ -267,7 +370,8 @@ void Chemistry<TF>::exec_stats(const int iteration, const double time, Stats<TF>
     // trfa = (TF) 0.0;
 }
 
-    template <typename TF>
+
+template <typename TF>
 void Chemistry<TF>::init(Input& inputin)
 {
     if (!sw_chemistry)
@@ -277,28 +381,45 @@ void Chemistry<TF>::init(Input& inputin)
 
     statistics_counter = 0;
 
-    // initialize 2D deposition arrays:
+    // Initialize existing arrays
     vdnh3.resize(gd.ijcells);
-
-    // added for nh3_flux (initialize nh3_flux arrays)
     flux_nh3.resize(gd.ijcells);
     std::fill(flux_nh3.begin(), flux_nh3.end(), TF(0));
-
-
-    // added for instantaneous deposition flux of NH3 
     flux_inst.resize(gd.ijcells);
     std::fill(flux_inst.begin(), flux_inst.end(), TF(0));
 
-    // initialize deposition routine:
-    deposition-> init(inputin);
+    // Initialize new arrays for concentration scaling with zeros
+    c_star_1.resize(gd.ijcells);
+    std::fill(c_star_1.begin(), c_star_1.end(), TF(0));  // Initialize with zeros
 
-    // fill deposition with standard values:
-    std::fill(vdnh3.begin(), vdnh3.end(), deposition-> get_vd("nh3"));
+    c_star_2.resize(gd.ijcells);
+    std::fill(c_star_2.begin(), c_star_2.end(), TF(0));  // Initialize with zeros
+    
+    c_ref.resize(gd.ijcells);
+    std::fill(c_ref.begin(), c_ref.end(), TF(0));  // Initialize with zeros
 
-    master.print_message("Deposition arrays initialized, e.g. with vdnh3 = %13.5e m/s \n", deposition-> get_vd("nh3"));
+    c_diff_nh3.resize(gd.ijcells);
+    std::fill(c_diff_nh3.begin(), c_diff_nh3.end(), TF(0));  // Initialize with zeros
+    
+    flux_inst_cstar.resize(gd.ijcells);
+    std::fill(flux_inst_cstar.begin(), flux_inst_cstar.end(), TF(0));  // Initialize with zeros
+    
+    flux_inst_cref.resize(gd.ijcells);
+    std::fill(flux_inst_cref.begin(), flux_inst_cref.end(), TF(0));  // Initialize with zeros
+
+    // Initialize deposition routine
+    deposition->init(inputin);
+
+    // Fill deposition with standard values
+    std::fill(vdnh3.begin(), vdnh3.end(), deposition->get_vd("nh3"));
+
+    master.print_message("Deposition arrays initialized, e.g. with vdnh3 = %13.5e m/s \n", deposition->get_vd("nh3"));
 }
 
-    template <typename TF>
+// Fixed exec method to properly access boundary information
+
+
+template <typename TF>
 void Chemistry<TF>::create(
         const Timeloop<TF>& timeloop, std::string sim_name, Netcdf_handle& input_nc,
         Stats<TF>& stats, Cross<TF>& cross)
@@ -444,13 +565,19 @@ void Chemistry<TF>::create(
         // used in chemistry:
         stats.add_time_series("vdnh3", "NH3 deposition velocity", "m s-1", group_named);
         //stats.add_time_series("flux_nh3", "NH3 surface flux", "mol(NH3) m-2 s-1", group_named);
+        stats.add_time_series("c_star_1", "C*_1 concentration scaling parameter", "mol mol-1", group_named);
+        stats.add_time_series("c_star_2", "C*_2 concentration scaling parameter", "mol mol-1", group_named);
+        stats.add_time_series("c_ref", "Reference concentration at z_ref", "mol mol-1", group_named);
+        stats.add_time_series("c_diff_nh3", "Difference in  concentration scales parameter", "mol mol-1", group_named);
+        stats.add_time_series("flux_inst_cstar", "NH3 flux using c_star_1", "kg m-2 s-1", group_named);
+        stats.add_time_series("flux_inst_cref", "NH3 flux using c_ref", "kg m-2 s-1", group_named);
     }
 
     // add cross-sections
     if (cross.get_switch())
     {
         //std::vector<std::string> allowed_crossvars = {"vdnh3"};
-        std::vector<std::string> allowed_crossvars = {"vdnh3","flux_nh3","flux_inst"};
+        std::vector<std::string> allowed_crossvars = {"vdnh3","flux_nh3","flux_inst","c_star_1","c_star_2","c_ref","c_nh3_diff","flux_inst_cstar","flux_inst_cref"};
         cross_list = cross.get_enabled_variables(allowed_crossvars);
 
         // `deposition->create()` only creates cross-sections.
@@ -476,13 +603,25 @@ void Chemistry<TF>::exec_cross(Cross<TF>& cross, unsigned long iotime)
             cross.cross_plane(flux_nh3.data(), no_offset, name, iotime);
         else if (name == "flux_inst")  //added for instantaneous deposition flux of NH3
             cross.cross_plane(flux_inst.data(), no_offset, name, iotime);
+        else if (name == "c_star_1")
+            cross.cross_plane(c_star_1.data(), no_offset, name, iotime);
+        else if (name == "c_star_2")
+            cross.cross_plane(c_star_2.data(), no_offset, name, iotime);
+        else if (name == "c_diff_nh3")
+            cross.cross_plane(c_diff_nh3.data(), no_offset, name, iotime);
+        else if (name == "c_ref")
+            cross.cross_plane(c_ref.data(), no_offset, name, iotime);
+        else if (name == "flux_inst_cstar")
+            cross.cross_plane(flux_inst_cstar.data(), no_offset, name, iotime);
+        else if (name == "flux_inst_cref")
+            cross.cross_plane(flux_inst_cref.data(), no_offset, name, iotime);
     }
 
     // see if to write per tile:
     deposition->exec_cross(cross, iotime);
 }
 
-    template <typename TF>
+template <typename TF>
 void Chemistry<TF>::update_time_dependent(Timeloop<TF>& timeloop, Boundary<TF>& boundary, Thermo<TF>& thermo)
 
 
@@ -511,11 +650,10 @@ void Chemistry<TF>::update_time_dependent(Timeloop<TF>& timeloop, Boundary<TF>& 
             vdnh3.data());
 }
 
-
 #ifndef USECUDA
+
 template <typename TF>
 void Chemistry<TF>::exec(Thermo<TF>& thermo, Boundary<TF>& boundary, double sdt, double dt)
-
 {
     if (!sw_chemistry)
         return;
@@ -525,11 +663,24 @@ void Chemistry<TF>::exec(Thermo<TF>& thermo, Boundary<TF>& boundary, double sdt,
     auto tmp = fields.get_tmp();
     thermo.get_thermo_field(*tmp, "T", true, false);
 
-    // Calculate the mean temperature and water vapor mixing ratio.
+    // Calculate the mean temperature and water vapor mixing ratio
     field3d_operators.calc_mean_profile(tprof.data(), tmp->fld.data());
     qprof = fields.sp.at("qt")->fld_mean;
-    //field3d_operators.calc_mean_profile(qprof.data(), fields.sp.at("qt")->fld.data());
+    
+    // Get roughness length and Obukhov length from boundary
+    const std::vector<TF>& z0m = boundary.get_z0m();
+    const auto& tiles = boundary.get_tiles();
+    std::vector<TF> obuk(gd.ijcells, TF(0));
+    
+    for (const auto& tile : tiles) {
+        const auto& tile_data = tile.second;
+        for (int ij = 0; ij < gd.ijcells; ++ij) {
+            obuk[ij] += tile_data.fraction[ij] * tile_data.obuk[ij];
+        }
+    }
 
+
+    // REMOVE ALL THE DUPLICATE DECLARATIONS AND LOOPS
 
     pss<TF>(
             fields.st.at("nh3")->fld.data(),
@@ -540,26 +691,30 @@ void Chemistry<TF>::exec(Thermo<TF>& thermo, Boundary<TF>& boundary, double sdt,
             qprof.data(),
             gd.dzi.data(),
             fields.rhoref.data(),
+            gd.z.data(),                   
+            obuk.data(),                   // CHANGE TO obuk.data()
+            z0m.data(),                    
             rfa.data(),
-            flux_nh3.data(),  //added for nh3_flux
-            flux_inst.data(), //added for instantaneous deposition flux of NH3
-            trfa, //accumulated for the time
+            flux_nh3.data(),
+            flux_inst.data(),
+            c_star_1.data(),               
+            c_star_2.data(),
+            c_ref.data(),
+            c_diff_nh3.data(),
+            flux_inst_cstar.data(),
+            flux_inst_cref.data(),
+            trfa,
             dt, sdt, lifetime,
             gd.istart, gd.iend,
             gd.jstart, gd.jend,
             gd.kstart, gd.kend,
             gd.icells, gd.ijcells,
-            gd.dx, gd.dy);    // Add these parameters
+            gd.dx, gd.dy);
 
     fields.release_tmp(tmp);
-
-    //isop_stat<TF>(
-    //      fields.st.at("isop")->fld.data(), fields.sp.at("isop")->fld.data(),
-    //      gd.istart, gd.iend, gd.jstart, gd.jend, gd.kstart, gd.kend,
-    //      gd.icells, gd.ijcells);
 }
+
 #endif
 
 template class Chemistry<double>;
 //:template class Chemistry<float>;
-
