@@ -1179,13 +1179,13 @@ void Deposition<TF>::update_time_dependent(
     // Calculate actual time of day 
     const TF actual_time = t0 + model_time;
 
-    // Debug prints (remove after testing)
-    if (timeloop.get_iteration() % 100 == 0) { // Print every 100 iterations
-        master.print_message("DEBUG: t0=%f, model_time=%f, actual_time=%f\n", 
-                            t0, model_time, actual_time);
-        master.print_message("DEBUG: Hour of day=%f, Day of year=%f\n",
-                            timeloop.calc_hour_of_day(), timeloop.calc_day_of_year());
-    }   
+    //// Debug prints (remove after testing)
+    //if (timeloop.get_iteration() % 100 == 0) { // Print every 100 iterations
+    //    master.print_message("DEBUG: t0=%f, model_time=%f, actual_time=%f\n", 
+    //                        t0, model_time, actual_time);
+    //    master.print_message("DEBUG: Hour of day=%f, Day of year=%f\n",
+    //                        timeloop.calc_hour_of_day(), timeloop.calc_day_of_year());
+    //}   
 
     const std::vector<TF>& rho = thermo.get_basestate_vector("rho");
 
