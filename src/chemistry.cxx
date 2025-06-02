@@ -175,7 +175,7 @@ namespace
                         // Calculate c_star_2 using simple logarithmic formula (no stability correction)
                         if (std::abs(log(z_2/z_1)) > TF(1e-10))
                         {
-                            c_star_2[ij] = kappa * (c_2 - c_1) / log(z_2/z_1);
+                            c_star_2[ij] = -1.0 * kappa * (c_2 - c_1) / log(z_2/z_1);
                         }
                         else
                         {
@@ -204,7 +204,7 @@ namespace
                             // Calculate C*_1 directly using the formula
                             if (std::abs(log(z_2/z_1) - psi_2 + psi_1) > TF(1e-10))
                             {
-                                c_star_1[ij] = kappa * (c_2 - c_1) / (log(z_2/z_1) - psi_2 + psi_1);
+                                c_star_1[ij] = -1.0 * kappa * (c_2 - c_1) / (log(z_2/z_1) - psi_2 + psi_1);
                                 
                                 // Calculate difference between NH3 at kstart and c_star_1
                                 c_diff_nh3[ij] = c_1 - c_star_1[ij];
@@ -718,3 +718,5 @@ void Chemistry<TF>::exec(Thermo<TF>& thermo, Boundary<TF>& boundary, double sdt,
 
 template class Chemistry<double>;
 //:template class Chemistry<float>;
+
+
