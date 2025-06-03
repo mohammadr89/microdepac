@@ -58,6 +58,10 @@ class Chemistry
         void exec(Thermo<TF>&, Boundary<TF>&, double, double);     ///< Add the tendencies belonging to the chemistry processes.
         void exec_stats(const int, const double, Stats<TF>&);   /// calculate statistics
         void exec_cross(Cross<TF>&, unsigned long);
+        
+        // ADD NEW METHOD DECLARATION:
+        void calc_c20m(Boundary<TF>& boundary);  // Calculate concentration at 20m using different approaches
+
 
     protected:
         // Cross sections
@@ -72,6 +76,7 @@ class Chemistry
 
         bool sw_chemistry;
         TF lifetime; // lifetime of species in seconds
+        TF z_target;  // Target height for concentration calculation (from input)
 
         Field3d_operators<TF> field3d_operators;
 
@@ -115,5 +120,10 @@ class Chemistry
         std::vector<TF> cref;          // Reference concentration at z_ref = 50*z0
         std::vector<TF> flux_inst_cstar; // Instantaneous flux using cstar1
         std::vector<TF> flux_inst_cref;  // Instantaneous flux using cref
+        
+        // ADD NEW ARRAYS FOR 20M CONCENTRATION CALCULATIONS:
+        std::vector<TF> c20m_A;      // Concentration at 20m using Approach A (optimal c*)
+        std::vector<TF> c20m_B;      // Concentration at 20m using Approach B (existing cstar1)
+        std::vector<TF> c20m_grid;   // Actual simulated concentration at closest grid point to 20m
 };
 #endif
