@@ -58,10 +58,8 @@ class Chemistry
         void exec(Thermo<TF>&, Boundary<TF>&, double, double);     ///< Add the tendencies belonging to the chemistry processes.
         void exec_stats(const int, const double, Stats<TF>&);   /// calculate statistics
         void exec_cross(Cross<TF>&, unsigned long);
+        void calc_c20m(Boundary<TF>&);
         
-        // ADD NEW METHOD DECLARATION:
-        void calc_c20m(Boundary<TF>& boundary);  // Calculate concentration at 20m using different approaches
-
         // ← Added Getter Methods:
         const std::vector<TF>& get_c20m_A() const { return c20m_A; }
         const std::vector<TF>& get_c20m_B() const { return c20m_B; }
@@ -82,6 +80,7 @@ class Chemistry
         bool sw_chemistry;
         TF lifetime; // lifetime of species in seconds
         TF z_target;  // Target height for concentration calculation (from input)
+        std::vector<TF> c_target;        // Target height concentration (optimal method)
 
         Field3d_operators<TF> field3d_operators;
 
@@ -121,14 +120,12 @@ class Chemistry
         // New arrays for concentration scaling and fluxes
         std::vector<TF> cstar1;       // Scaled concentration parameter C*_1
         std::vector<TF> cstar2;       // Simple log formula concentration parameter C*_2  
-        std::vector<TF> c_diff_nh3;     // Difference between NH3[kstart] and cstar1
-        std::vector<TF> cref;          // Reference concentration at z_ref = 50*z0
         std::vector<TF> flux_inst_cstar; // Instantaneous flux using cstar1
-        std::vector<TF> flux_inst_cref;  // Instantaneous flux using cref
         
         // ADD NEW ARRAYS FOR 20M CONCENTRATION CALCULATIONS:
         std::vector<TF> c20m_A;      // Concentration at 20m using Approach A (optimal c*)
         std::vector<TF> c20m_B;      // Concentration at 20m using Approach B (existing cstar1)
         std::vector<TF> c20m_grid;   // Actual simulated concentration at closest grid point to 20m
+        std::vector<TF> c_diff_flux;  // Difference flux calculation
 };
 #endif
