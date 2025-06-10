@@ -331,7 +331,6 @@ namespace {
                                                             // Supporting cross-section outputs for debugging
                                                             // Facilitating model validation and research  
                 const Chemistry<TF>& chemistry,        // Chemistry reference
-                const std::string& c20m_type,          // Concentration type selection
                 const int istart, const int iend,
                 const int jstart, const int jend,
                 const int jj,
@@ -398,20 +397,9 @@ namespace {
 
                                 //const TF nh3_ugm3 = nh3_concentration[ijk] * c_ug; // mol/mol to ug/m3 conversion
 
-                                TF nh3_conc_value;
-                                
-                                if (c20m_type == "A") {
-                                    nh3_conc_value = chemistry.get_c20m_A()[ij];
-                                } else if (c20m_type == "B") {
-                                    nh3_conc_value = chemistry.get_c20m_B()[ij];
-                                } else if (c20m_type == "grid") {
-                                    nh3_conc_value = chemistry.get_c20m_grid()[ij];
-                                } else {
-                                    // Default: use original 3D field concentration
-                                    nh3_conc_value = nh3_concentration[ijk];
-                                }
-                                
-                                const TF nh3_ugm3 = nh3_conc_value * c_ug;
+                                // Use optimal target height concentration from Chemistry module
+                                const TF nh3_conc_value = chemistry.get_c_target()[ij];
+                                const TF nh3_ugm3 = nh3_conc_value * c_ug; 
 
                                 // debug print for temperature, RH and NH3 concentration passed to depac
                                 //std::cout << "Grid points: i=" << i << ", j=" << j
@@ -540,19 +528,8 @@ namespace {
 				                deposition_tiles.at(lu_type).rb.data()[ij] = rb;
                                 //const TF nh3_ugm3 = nh3_concentration[ijk] * c_ug; // mol/mol to ug/m3 conversion
 
-                                TF nh3_conc_value;
-                                
-                                if (c20m_type == "A") {
-                                    nh3_conc_value = chemistry.get_c20m_A()[ij];
-                                } else if (c20m_type == "B") {
-                                    nh3_conc_value = chemistry.get_c20m_B()[ij];
-                                } else if (c20m_type == "grid") {
-                                    nh3_conc_value = chemistry.get_c20m_grid()[ij];
-                                } else {
-                                    // Default: use original 3D field concentration
-                                    nh3_conc_value = nh3_concentration[ijk];
-                                }
-                                
+                                // Use optimal target height concentration from Chemistry module
+                                const TF nh3_conc_value = chemistry.get_c_target()[ij];
                                 const TF nh3_ugm3 = nh3_conc_value * c_ug;
 
                                 float rc_tot;           // total canopy resistance Rc (s/m)
@@ -640,19 +617,7 @@ namespace {
                                 const int ijk = i + j*jj + kstart*ijcells;  // Added this for surface level
                                 //const TF nh3_ugm3 = nh3_concentration[ijk] * c_ug; // mol/mol to ug/m3 conversion
 
-                                TF nh3_conc_value;
-                                
-                                if (c20m_type == "A") {
-                                    nh3_conc_value = chemistry.get_c20m_A()[ij];
-                                } else if (c20m_type == "B") {
-                                    nh3_conc_value = chemistry.get_c20m_B()[ij];
-                                } else if (c20m_type == "grid") {
-                                    nh3_conc_value = chemistry.get_c20m_grid()[ij];
-                                } else {
-                                    // Default: use original 3D field concentration
-                                    nh3_conc_value = nh3_concentration[ijk];
-                                }
-                                
+                                const TF nh3_conc_value = chemistry.get_c_target()[ij];
                                 const TF nh3_ugm3 = nh3_conc_value * c_ug;
 
                                 // std::cout << "VEG tile: i=" << i << ", j=" << j << ", ijk=" << ijk << std::endl;
@@ -867,7 +832,6 @@ namespace {
             const TF ccomp_override_value,
             Deposition_tile_map<TF>& deposition_tiles,
             const Chemistry<TF>& chemistry,
-            const std::string& c20m_type,
             const int istart, const int iend,
             const int jstart, const int jend,
             const int jj,
@@ -915,7 +879,6 @@ namespace {
                     ccomp_override_value,
                     deposition_tiles,
                     chemistry,
-                    c20m_type,
                     istart, iend,
                     jstart, jend,
                     jj,
@@ -975,9 +938,6 @@ Deposition<TF>::Deposition(Master& masterin, Grid<TF>& gridin, Fields<TF>& field
     sw_deposition = inputin.get_item<bool>("deposition", "swdeposition", "", false);
     use_depac = inputin.get_item<bool>("deposition", "use_depac", "", true);  // Default to DEPAC
     t0 = inputin.get_item<TF>("time", "starttime", "", TF(0.0));    
-
-    c20m_type = inputin.get_item<std::string>("deposition", "c20m_type", "", "original");
-
 
     // Log which mode is being used
     if (sw_deposition) {
@@ -1513,7 +1473,6 @@ void Deposition<TF>::update_time_dependent(
                 ccomp_override_value,           // NEW argument
                 deposition_tiles,               // NEW argument
                 chemistry,        // Chemistry reference
-                c20m_type,        // Concentration type
                 gd.istart, gd.iend,
                 gd.jstart, gd.jend,
                 gd.icells,

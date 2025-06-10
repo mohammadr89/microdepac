@@ -61,10 +61,7 @@ class Chemistry
         void calc_c20m(Boundary<TF>&);
         
         // ← Added Getter Methods:
-        const std::vector<TF>& get_c20m_A() const { return c20m_A; }
-        const std::vector<TF>& get_c20m_B() const { return c20m_B; }
-        const std::vector<TF>& get_c20m_grid() const { return c20m_grid; }
-
+        const std::vector<TF>& get_c_target() const { return c_target; }
 
     protected:
         // Cross sections
@@ -123,8 +120,6 @@ class Chemistry
         std::vector<TF> flux_inst_cstar; // Instantaneous flux using cstar1
         
         // ADD NEW ARRAYS FOR 20M CONCENTRATION CALCULATIONS:
-        std::vector<TF> c20m_A;      // Concentration at 20m using Approach A (optimal c*)
-        std::vector<TF> c20m_B;      // Concentration at 20m using Approach B (existing cstar1)
         std::vector<TF> c20m_grid;   // Actual simulated concentration at closest grid point to 20m
         std::vector<TF> c_diff_flux;  // Difference flux calculation
 };
