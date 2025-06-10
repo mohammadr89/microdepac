@@ -1374,7 +1374,8 @@ void Deposition<TF>::update_time_dependent(
     TF xmair = 28.9647; // Molar mass of dry air [kg kmol-1]
     TF xmair_i = TF(1) / xmair;
     //TF c_ug_local = TF(1.0e9) * rho[gd.kstart] * xmnh3 * xmair_i;
-    TF c_ug = TF(1.0e9) * rho[gd.kstart] * xmnh3 * xmair_i;
+    //TF c_ug = TF(1.0e9) * rho[gd.kstart] * xmnh3 * xmair_i;
+    TF c_ug = TF(1.0e9) * fields.rhoref[gd.kstart] * xmnh3 * xmair_i;
     
     //// Synchronize meteorological parameters for all processes
     //TF sync_params[6];
