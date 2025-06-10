@@ -8,7 +8,7 @@
 #include "boundary_surface_lsm.h"
 #include "boundary.h"
 #include "boundary_cyclic.h"
-#include "radiation.h" // Include radiation header
+#include "radiation.h" 
 
 class Master;
 class Input;
@@ -18,6 +18,7 @@ template<typename> class Stats;
 template<typename> class Cross;
 template<typename> class Boundary_surface_lsm;
 template<typename> class Radiation;
+template<typename> class Chemistry;
 
 enum class Deposition_type {disabled, enabled, simple, average};
 
@@ -61,7 +62,7 @@ class Deposition
 public:
 //These are the functions we can use from outside the machine:
 
-    Deposition(Master&, Grid<TF>&, Fields<TF>&, Radiation<TF>&, Input&);// when the machine is created
+    Deposition(Master&, Grid<TF>&, Fields<TF>&, Radiation<TF>&, Chemistry<TF>&, Input&); // when the machine is created
     ~Deposition();// when the machine is turned off
 
     void init(Input&); //Reads configuration from the Input object; Prepares default values; Initializes deposition_tiles...
@@ -87,7 +88,8 @@ private:
     Master& master;
     Grid<TF>& grid;
     Fields<TF>& fields;
-    Radiation<TF>& radiation; // Add radiation reference
+    Radiation<TF>& radiation; 
+    Chemistry<TF>& chemistry; 
 
     bool sw_deposition;
     bool use_depac;          // Switch to toggle between original and DEPAC models
@@ -145,6 +147,8 @@ private:
     TF catm;             // Atmospheric NH3 concentration (μg/m3)
     TF c_ug;  // Synchronized conversion factor for NH3
     TF pressure;        // Pressure (Pa)
+
+    std::string c20m_type; //Stores which type the user wants ("A", "B", "grid", "original")
 
     // Tile management
     std::vector<std::string> deposition_tile_names {"veg", "soil", "wet"};

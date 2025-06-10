@@ -441,7 +441,11 @@ Chemistry<TF>::Chemistry(Master& masterin, Grid<TF>& gridin, Fields<TF>& fieldsi
     master.print_message("Lifetime of the tracer:  = %13.5e s \n", lifetime);
     if (!sw_chemistry)
         return;
-    deposition = std::make_shared<Deposition <TF>>(masterin, gridin, fieldsin, radiationin, inputin);
+    //deposition = std::make_shared<Deposition <TF>>(masterin, gridin, fieldsin, radiationin, inputin);
+
+    deposition = std::make_shared<Deposition<TF>>(master, grid, fields, radiation, *this, inputin);
+    //The *this passes the current Chemistry object as a reference to the Deposition constructor.
+
 }
 
 template <typename TF>
