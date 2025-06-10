@@ -431,8 +431,6 @@ void Chemistry<TF>::exec_stats(const int iteration, const double time, Stats<TF>
         stats.calc_stats_2d("cstar1", cstar1, no_offset);
         stats.calc_stats_2d("cstar2", cstar2, no_offset);
         stats.calc_stats_2d("flux_inst_cstar", flux_inst_cstar, no_offset);
-        stats.calc_stats_2d("c20m_A", c20m_A, no_offset);
-        stats.calc_stats_2d("c20m_B", c20m_B, no_offset);
         stats.calc_stats_2d("c20m_grid", c20m_grid, no_offset);
         stats.calc_stats_2d("c_target", c_target, no_offset);
         stats.calc_stats_2d("c_diff_flux", c_diff_flux, no_offset);
@@ -507,12 +505,6 @@ void Chemistry<TF>::init(Input& inputin)
     
     flux_inst_cstar.resize(gd.ijcells);
     std::fill(flux_inst_cstar.begin(), flux_inst_cstar.end(), TF(0));  // Initialize with zeros
-    
-    c20m_A.resize(gd.ijcells);
-    std::fill(c20m_A.begin(), c20m_A.end(), TF(0));
-    
-    c20m_B.resize(gd.ijcells);
-    std::fill(c20m_B.begin(), c20m_B.end(), TF(0));
     
     c20m_grid.resize(gd.ijcells);
     std::fill(c20m_grid.begin(), c20m_grid.end(), TF(0));
@@ -685,8 +677,6 @@ void Chemistry<TF>::create(
         stats.add_time_series("cstar1", "C*_1 concentration scaling parameter", "mol mol-1", group_named);
         stats.add_time_series("cstar2", "C*_2 concentration scaling parameter", "mol mol-1", group_named);
         stats.add_time_series("flux_inst_cstar", "NH3 flux using cstar1", "kg m-2 s-1", group_named);
-        stats.add_time_series("c20m_A", "NH3 concentration at 20m (Approach A)", "mol mol-1", group_named);
-        stats.add_time_series("c20m_B", "NH3 concentration at 20m (Approach B)", "mol mol-1", group_named);
         stats.add_time_series("c20m_grid", "NH3 concentration at closest grid point to 20m", "mol mol-1", group_named);
         stats.add_time_series("c_target", "NH3 concentration at target height (optimal)", "mol mol-1", group_named);
         stats.add_time_series("c_diff_flux", "Concentration difference flux (c_target - c20m_grid) × 10^9 × rho × conversion", "kg m-2 s-1", group_named);
@@ -696,7 +686,7 @@ void Chemistry<TF>::create(
     if (cross.get_switch())
     {
         //std::vector<std::string> allowed_crossvars = {"vdnh3"};
-        std::vector<std::string> allowed_crossvars = {"vdnh3","flux_nh3","flux_inst","cstar1","cstar2","flux_inst_cstar","c20m_A","c20m_B","c20m_grid","c_target","c_diff_flux"};
+        std::vector<std::string> allowed_crossvars = {"vdnh3","flux_nh3","flux_inst","cstar1","cstar2","flux_inst_cstar","c20m_grid","c_target","c_diff_flux"};
         cross_list = cross.get_enabled_variables(allowed_crossvars);
 
         // `deposition->create()` only creates cross-sections.
@@ -728,10 +718,6 @@ void Chemistry<TF>::exec_cross(Cross<TF>& cross, unsigned long iotime)
             cross.cross_plane(cstar2.data(), no_offset, name, iotime);
         else if (name == "flux_inst_cstar")
             cross.cross_plane(flux_inst_cstar.data(), no_offset, name, iotime);
-        else if (name == "c20m_A")
-            cross.cross_plane(c20m_A.data(), no_offset, name, iotime);
-        else if (name == "c20m_B")
-            cross.cross_plane(c20m_B.data(), no_offset, name, iotime);
         else if (name == "c20m_grid")
             cross.cross_plane(c20m_grid.data(), no_offset, name, iotime);
         else if (name == "c_target")
