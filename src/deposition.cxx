@@ -330,6 +330,8 @@ namespace {
                                                             // Enabling spatial analysis of resistance components
                                                             // Supporting cross-section outputs for debugging
                                                             // Facilitating model validation and research  
+                const Chemistry<TF>& chemistry,        // Chemistry reference
+                const std::string& c20m_type,          // Concentration type selection
                 const int istart, const int iend,
                 const int jstart, const int jend,
                 const int jj,
@@ -394,8 +396,22 @@ namespace {
 				                // Added this line to store rb
 				                deposition_tiles.at(lu_type).rb.data()[ij] = rb;
 
-                                //const TF nh3_ugm3 = nh3_concentration[ijk] * xmnh3 / 22.414 * 1.0e9; //mol/mol to ug/m3 conversion(STP)
-                                const TF nh3_ugm3 = nh3_concentration[ijk] * c_ug; // mol/mol to ug/m3 conversion
+                                //const TF nh3_ugm3 = nh3_concentration[ijk] * c_ug; // mol/mol to ug/m3 conversion
+
+                                TF nh3_conc_value;
+                                
+                                if (c20m_type == "A") {
+                                    nh3_conc_value = chemistry.get_c20m_A()[ij];
+                                } else if (c20m_type == "B") {
+                                    nh3_conc_value = chemistry.get_c20m_B()[ij];
+                                } else if (c20m_type == "grid") {
+                                    nh3_conc_value = chemistry.get_c20m_grid()[ij];
+                                } else {
+                                    // Default: use original 3D field concentration
+                                    nh3_conc_value = nh3_concentration[ijk];
+                                }
+                                
+                                const TF nh3_ugm3 = nh3_conc_value * c_ug;
 
                                 // debug print for temperature, RH and NH3 concentration passed to depac
                                 //std::cout << "Grid points: i=" << i << ", j=" << j
@@ -522,7 +538,22 @@ namespace {
 
 				                // Added this line to store rb
 				                deposition_tiles.at(lu_type).rb.data()[ij] = rb;
-                                const TF nh3_ugm3 = nh3_concentration[ijk] * c_ug; // mol/mol to ug/m3 conversion
+                                //const TF nh3_ugm3 = nh3_concentration[ijk] * c_ug; // mol/mol to ug/m3 conversion
+
+                                TF nh3_conc_value;
+                                
+                                if (c20m_type == "A") {
+                                    nh3_conc_value = chemistry.get_c20m_A()[ij];
+                                } else if (c20m_type == "B") {
+                                    nh3_conc_value = chemistry.get_c20m_B()[ij];
+                                } else if (c20m_type == "grid") {
+                                    nh3_conc_value = chemistry.get_c20m_grid()[ij];
+                                } else {
+                                    // Default: use original 3D field concentration
+                                    nh3_conc_value = nh3_concentration[ijk];
+                                }
+                                
+                                const TF nh3_ugm3 = nh3_conc_value * c_ug;
 
                                 float rc_tot;           // total canopy resistance Rc (s/m)
                                 float ccomp_tot = 0.0;  // total compensation point (ug/m3)
@@ -607,7 +638,22 @@ namespace {
                             for (int i=istart; i<iend; ++i) {
                                 const int ij = i + j*jj;
                                 const int ijk = i + j*jj + kstart*ijcells;  // Added this for surface level
-                                const TF nh3_ugm3 = nh3_concentration[ijk] * c_ug; // mol/mol to ug/m3 conversion
+                                //const TF nh3_ugm3 = nh3_concentration[ijk] * c_ug; // mol/mol to ug/m3 conversion
+
+                                TF nh3_conc_value;
+                                
+                                if (c20m_type == "A") {
+                                    nh3_conc_value = chemistry.get_c20m_A()[ij];
+                                } else if (c20m_type == "B") {
+                                    nh3_conc_value = chemistry.get_c20m_B()[ij];
+                                } else if (c20m_type == "grid") {
+                                    nh3_conc_value = chemistry.get_c20m_grid()[ij];
+                                } else {
+                                    // Default: use original 3D field concentration
+                                    nh3_conc_value = nh3_concentration[ijk];
+                                }
+                                
+                                const TF nh3_ugm3 = nh3_conc_value * c_ug;
 
                                 // std::cout << "VEG tile: i=" << i << ", j=" << j << ", ijk=" << ijk << std::endl;
                                 // std::cout << "  NH3 conc = " << nh3_concentration[ijk]
@@ -655,8 +701,8 @@ namespace {
                                         local_lu = 5;  // deciduous forest
                                         local_sai = lai[ij] + 1.0;  // For forest, add stem area
                                     }
-
                                     // Wet vegetation case
+
                                     const TF rb = TF(2.0) / (ckarman * ustar[ij]) * diff_scl[0];
 
 				                    // Added this line to store rb
@@ -820,6 +866,8 @@ namespace {
             const bool sw_override_ccomp,
             const TF ccomp_override_value,
             Deposition_tile_map<TF>& deposition_tiles,
+            const Chemistry<TF>& chemistry,
+            const std::string& c20m_type,
             const int istart, const int iend,
             const int jstart, const int jend,
             const int jj,
@@ -866,6 +914,8 @@ namespace {
                     sw_override_ccomp,
                     ccomp_override_value,
                     deposition_tiles,
+                    chemistry,
+                    c20m_type,
                     istart, iend,
                     jstart, jend,
                     jj,
@@ -919,12 +969,15 @@ namespace {
  */
 template<typename TF>
 Deposition<TF>::Deposition(Master& masterin, Grid<TF>& gridin, Fields<TF>& fieldsin, 
-        Radiation<TF>& radiationin, Input& inputin) :
-    master(masterin), grid(gridin), fields(fieldsin), radiation(radiationin)
+        Radiation<TF>& radiationin, Chemistry<TF>& chemistryin, Input& inputin) :
+    master(masterin), grid(gridin), fields(fieldsin), radiation(radiationin), chemistry(chemistryin)
 {
     sw_deposition = inputin.get_item<bool>("deposition", "swdeposition", "", false);
     use_depac = inputin.get_item<bool>("deposition", "use_depac", "", true);  // Default to DEPAC
     t0 = inputin.get_item<TF>("time", "starttime", "", TF(0.0));    
+
+    c20m_type = inputin.get_item<std::string>("deposition", "c20m_type", "", "original");
+
 
     // Log which mode is being used
     if (sw_deposition) {
@@ -1458,6 +1511,8 @@ void Deposition<TF>::update_time_dependent(
                 sw_override_ccomp,              // NEW argument
                 ccomp_override_value,           // NEW argument
                 deposition_tiles,               // NEW argument
+                chemistry,        // Chemistry reference
+                c20m_type,        // Concentration type
                 gd.istart, gd.iend,
                 gd.jstart, gd.jend,
                 gd.icells,

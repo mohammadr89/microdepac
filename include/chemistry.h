@@ -62,6 +62,11 @@ class Chemistry
         // ADD NEW METHOD DECLARATION:
         void calc_c20m(Boundary<TF>& boundary);  // Calculate concentration at 20m using different approaches
 
+        // ← Added Getter Methods:
+        const std::vector<TF>& get_c20m_A() const { return c20m_A; }
+        const std::vector<TF>& get_c20m_B() const { return c20m_B; }
+        const std::vector<TF>& get_c20m_grid() const { return c20m_grid; }
+
 
     protected:
         // Cross sections
