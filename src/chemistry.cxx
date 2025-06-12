@@ -330,7 +330,7 @@ namespace
                         // Calculate cstar2 using simple logarithmic formula (no stability correction)
                         if (std::abs(neutral_factor) > TF(1e-10))
                         {
-                            cstar2[ij] = -1.0 * (c_2 - c_1) / neutral_factor;
+                            cstar2[ij] = +1.0 * (c_2 - c_1) / neutral_factor;
                         }
                         else
                         {
@@ -340,7 +340,7 @@ namespace
                         // Calculate cstar1 with stability correction
                         if (std::abs(gradient_factor) > TF(1e-10))
                         {
-                            cstar1[ij] = -1.0 * (c_2 - c_1) / gradient_factor;
+                            cstar1[ij] = +1.0 * (c_2 - c_1) / gradient_factor;
                             
                             //// Get roughness length (z0) from the surface model
                             //const TF z_0 = z0m[ij];
