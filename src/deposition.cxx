@@ -380,15 +380,6 @@ namespace {
                                     local_sai = lai[ij] + 1.0;  // For forest, add stem area
                                 }
 
-                                //// Calculate SAI based on the land use type
-                                //if (local_lu == 4 || local_lu == 5 || local_lu == 17 || local_lu == 18) {  // Forest types
-                                //    local_sai = lai[ij] + 1.0;
-                                //} else if (local_lu == 3) {  // Permanent crops
-                                //    local_sai = lai[ij] + 0.5;
-                                //} else {  // Default case (includes grass)
-                                //    local_sai = lai[ij];
-                                //}
-
                                 // Keep IFS Ra and use vegetation Rb scaling
                                 const TF rb = TF(2.0) / (ckarman * ustar[ij]) * diff_scl[0];
 
@@ -439,7 +430,6 @@ namespace {
                                     ccomp_tot = ccomp_override_value;
                                     use_input_ccomp = true;
                                 }
-
 
                                 depac_wrapper(
                                         compnam,
@@ -1333,40 +1323,8 @@ void Deposition<TF>::update_time_dependent(
     TF xmnh3 = 17.031;  // Molar mass of NH3 [g/mol]
     TF xmair = 28.9647; // Molar mass of dry air [kg kmol-1]
     TF xmair_i = TF(1) / xmair;
-    //TF c_ug_local = TF(1.0e9) * rho[gd.kstart] * xmnh3 * xmair_i;
-    //TF c_ug = TF(1.0e9) * rho[gd.kstart] * xmnh3 * xmair_i;
     TF c_ug = TF(1.0e9) * fields.rhoref[gd.kstart] * xmnh3 * xmair_i;
     
-    //// Synchronize meteorological parameters for all processes
-    //TF sync_params[6];
-    //sync_params[0] = temperature;
-    //sync_params[1] = rh;
-    //sync_params[2] = glrad;
-    //sync_params[3] = sinphi;
-    //sync_params[4] = static_cast<TF>(day_of_year);
-    //sync_params[5] = pressure;
-    //
-    //// Broadcast from root process
-    //master.broadcast(sync_params, 6, 0);
-    //master.broadcast(&c_ug_local, 1, 0);
-
-    //////debug prints on different processes to compare key values:
-    ////if (master.get_mpiid() == 0) {
-    ////    master.print_message("Root process: c_ug=%f, temperature=%f\n", c_ug, temperature);
-    ////}
-    ////if (master.get_mpiid() == 1) {
-    ////    master.print_message("Process 1: c_ug=%f, temperature=%f\n", c_ug, temperature);
-    ////}
-    //
-    //// Update local values on all processes
-    //temperature = sync_params[0];
-    //rh = sync_params[1];
-    //glrad = sync_params[2];
-    //sinphi = sync_params[3];
-    //day_of_year = static_cast<int>(sync_params[4]);
-    //pressure = sync_params[5];
-    //c_ug = c_ug_local;
-
     // Copy values from boundary tiles to deposition tiles
     for (const auto& tile_name : deposition_tile_names)
     {
@@ -1395,7 +1353,7 @@ void Deposition<TF>::update_time_dependent(
                 // deposition_tiles.at(tile.first).vdrooh.data(),
                 // deposition_tiles.at(tile.first).vdhcho.data(),
 
-                //// Code explanation... ho it gets lu_type and what "first" and "second" are!
+                //// Code explanation... it gets lu_type and what "first" and "second" are!
                     // Function Definition:
                     // template<typename TF>
                     // void calc_deposition_per_tile(
