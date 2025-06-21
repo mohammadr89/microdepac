@@ -117,7 +117,6 @@ class Chemistry
         // New arrays for concentration scaling and fluxes
         std::vector<TF> cstar1;       // Scaled concentration parameter C*_1
         std::vector<TF> cstar2;       // Simple log formula concentration parameter C*_2  
-        std::vector<TF> flux_inst_cstar; // Instantaneous flux using cstar1
         
         // ADD NEW ARRAYS FOR 20M CONCENTRATION CALCULATIONS:
         std::vector<TF> c20m_grid;   // Actual simulated concentration at closest grid point to 20m
