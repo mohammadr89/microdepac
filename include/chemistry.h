@@ -98,8 +98,10 @@ class Chemistry
         std::vector<TF> rka;
         std::vector<TF> qprof;
         std::vector<TF> tprof;
-        std::vector<TF> flux_nh3;  //added for nh3_flux 
-        std::vector<TF> flux_inst; //added for instantaneous flux
+        std::vector<TF> flux_nh3;  // average rate over statistics period (e.g., hourly)
+        std::vector<TF> flux_inst; // instantaneous deposition flux
+        std::vector<TF> total_flux_nh3; // Cumulative total deposition; Never gets reset; keeps accumulating throughout simulation
+
         TF trfa;
 
         // vectors to contain calculated deposition velocities (m/s)

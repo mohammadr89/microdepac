@@ -88,8 +88,9 @@ template<typename TF>
                 const TF* const restrict dzi,
                 const TF* const restrict rhoref,
                 TF* restrict rfa,
-                TF* restrict flux_nh3,  // New parameter for flux
-                TF* restrict flux_inst, // Add this line for instantaneous flux
+                TF* restrict flux_nh3, 
+                TF* restrict flux_inst, 
+                TF* restrict total_flux_nh3,
                 TF& trfa,
                 const TF dt,
                 const TF sdt,
@@ -144,14 +145,17 @@ template<typename TF>
                                     //flux_nh3[ij] = (-1.0) * 1.0e3 * vdnh3[ij] * nh3[ijk] * rhoref[k] * xmair_i * sdt; // [mol(NH3) m-2 s-1 * sdt!!!]
 
 
-                                    // Calculate instantaneous flux first
+                                    // Calculate instantaneous flux first [kg(NH3) m⁻² s⁻¹]
                                     flux_inst[ij] = (-1.0) * vdnh3[ij] * nh3[ijk] * rhoref[k] * xmair_i * xmnh3; // [kg(NH3) m-2 s-1]
-
                                     // Then calculate accumulated flux using the instantaneous value
                                     TF flux = flux_inst[ij] * sdt; // Scale by timestep for accumulation
 
                                     //TF flux = (-1.0) * vdnh3[ij] * nh3[ijk] * rhoref[k] * xmair_i * xmnh3 * sdt; // [kg(NH3) m-2 s-1] 
                                     flux_nh3[ij] += flux;        // For period statistics
+
+                                    // Accumulate total flux (never gets reset) [kg m⁻²]
+                                    total_flux_nh3[ij] += flux;
+
                                     decay = vdnh3[ij]*dzi[k] + lti;   // 1/s
                                 }
                                 else
@@ -213,21 +217,50 @@ void Chemistry<TF>::exec_stats(const int iteration, const double time, Stats<TF>
         // add deposition velocities to statistics:
         stats.calc_stats_2d("vdnh3"   , vdnh3,   no_offset);
 
+        // Unit conversion constants
+        const TF xmnh3 = 17.031;                        // Molar mass NH3 [g mol⁻¹]
+        const TF xmnh3_i = TF(1.0) / xmnh3;               // [mol g⁻¹]
+        const TF m2_to_ha = TF(1.0e4);                  // [m² ha⁻¹] 
+        const TF s_to_year = TF(365.25 * 24 * 3600);    // [s yr⁻¹]
+        // Combined conversion factor: [kg m⁻²] → [mol ha⁻¹ yr⁻¹]
+        const TF conversion_factor = xmnh3_i * m2_to_ha * s_to_year * 1.0e3;
 
+        // Convert flux_nh3 on-the-fly for statistics (keep original in kg m⁻²)
+        std::vector<TF> flux_nh3_mol_ha_yr(gd.ijcells);
         for (int j=gd.jstart; j<gd.jend; ++j)
             for (int i=gd.istart; i<gd.iend; ++i)
             {
                 const int ij = i + j*gd.jstride;
-                flux_nh3[ij] /= trfa;
-            } 
+                // Convert periodic flux: [kg m⁻²] over period → [mol ha⁻¹ yr⁻¹]
+                flux_nh3_mol_ha_yr[ij] = (flux_nh3[ij] / trfa) * conversion_factor;
+            }
 
-        stats.calc_stats_2d("flux_nh3", flux_nh3, no_offset); //added for nh3_flux
+        // for (int j=gd.jstart; j<gd.jend; ++j)
+        //     for (int i=gd.istart; i<gd.iend; ++i)
+        //     {
+        //         const int ij = i + j*gd.jstride;
+        //         flux_nh3[ij] /= trfa;
+        //     } 
+
+        stats.calc_stats_2d("flux_nh3", flux_nh3_mol_ha_yr, no_offset); //added for nh3_flux
         stats.calc_stats_2d("flux_inst", flux_inst, no_offset); // added for instantaneous deposition flux of NH3
 
+        // calculate total flux statistics (cumulative) in [mol ha⁻¹]
+        std::vector<TF> total_flux_mol_ha(gd.ijcells);
+        for (int j=gd.jstart; j<gd.jend; ++j)
+            for (int i=gd.istart; i<gd.iend; ++i)
+            {
+                const int ij = i + j*gd.jstride;
+                total_flux_mol_ha[ij] = total_flux_nh3[ij] * xmnh3_i * m2_to_ha * 1.0e3;  // [kg m⁻²] → [mol ha⁻¹]
+            }
+        
+        stats.calc_stats_2d("total_flux_mol_ha", total_flux_mol_ha, no_offset);  // Total [mol ha⁻¹]
 
         // Reset the periodic flux after saving to stats
+        // Reset ONLY the periodic flux (NOT the total)
         trfa = 0;
         std::fill(flux_nh3.begin(), flux_nh3.end(), TF(0));
+        // NOTE: total_flux_nh3 is NOT reset - it keeps accumulating
 
         // sum of all PEs:
         // printf("trfa: %13.4e iteration: %i time: %13.4e \n", trfa,iteration,time);
@@ -284,10 +317,13 @@ void Chemistry<TF>::init(Input& inputin)
     flux_nh3.resize(gd.ijcells);
     std::fill(flux_nh3.begin(), flux_nh3.end(), TF(0));
 
-
     // added for instantaneous deposition flux of NH3 
     flux_inst.resize(gd.ijcells);
     std::fill(flux_inst.begin(), flux_inst.end(), TF(0));
+
+    // added for total cumulative deposition flux arrays
+    total_flux_nh3.resize(gd.ijcells);
+    std::fill(total_flux_nh3.begin(), total_flux_nh3.end(), TF(0));
 
     // initialize deposition routine:
     deposition-> init(inputin);
@@ -295,7 +331,7 @@ void Chemistry<TF>::init(Input& inputin)
     // fill deposition with standard values:
     std::fill(vdnh3.begin(), vdnh3.end(), deposition-> get_vd("nh3"));
 
-    master.print_message("Deposition arrays initialized, e.g. with vdnh3 = %13.5e m/s \n", deposition-> get_vd("nh3"));
+    // master.print_message("Deposition arrays initialized, e.g. with vdnh3 = %13.5e m/s \n", deposition-> get_vd("nh3"));
 }
 
     template <typename TF>
@@ -450,7 +486,8 @@ void Chemistry<TF>::create(
     if (cross.get_switch())
     {
         //std::vector<std::string> allowed_crossvars = {"vdnh3"};
-        std::vector<std::string> allowed_crossvars = {"vdnh3","flux_nh3","flux_inst"};
+        std::vector<std::string> allowed_crossvars = {"vdnh3", "flux_nh3", "flux_inst", "total_flux_mol_ha"};
+
         cross_list = cross.get_enabled_variables(allowed_crossvars);
 
         // `deposition->create()` only creates cross-sections.
@@ -472,8 +509,25 @@ void Chemistry<TF>::exec_cross(Cross<TF>& cross, unsigned long iotime)
     {
         if (name == "vdnh3")
             cross.cross_plane(vdnh3.data(), no_offset, name, iotime);
-        else if (name == "flux_nh3") //added for nh3_flux
-            cross.cross_plane(flux_nh3.data(), no_offset, name, iotime);
+        else if (name == "flux_nh3")
+        {
+            // Convert on-the-fly for cross-sections
+            std::vector<TF> temp_flux_mol_ha_yr(gd.ijcells);
+            const TF xmnh3_i = 1.0/17.031;
+            const TF conversion_factor = xmnh3_i * 1.0e4 * (365.25 * 24 * 3600) * 1.0e3;
+            for (int ij = 0; ij < gd.ijcells; ++ij)
+                temp_flux_mol_ha_yr[ij] = (flux_nh3[ij] / trfa) * conversion_factor;
+            cross.cross_plane(temp_flux_mol_ha_yr.data(), no_offset, name, iotime);
+        }
+        else if (name == "total_flux_mol_ha")
+        {
+            // Convert on-the-fly for cross-sections
+            std::vector<TF> temp_mol_ha(gd.ijcells);
+            const TF kg_to_mol_ha = (1.0/17.031) * 1.0e4 * 1.0e3;
+            for (int ij = 0; ij < gd.ijcells; ++ij)
+                temp_mol_ha[ij] = total_flux_nh3[ij] * kg_to_mol_ha;
+            cross.cross_plane(temp_mol_ha.data(), no_offset, name, iotime);
+        }
         else if (name == "flux_inst")  //added for instantaneous deposition flux of NH3
             cross.cross_plane(flux_inst.data(), no_offset, name, iotime);
     }
@@ -540,8 +594,9 @@ void Chemistry<TF>::exec(Thermo<TF>& thermo,double sdt,double dt)
             gd.dzi.data(),
             fields.rhoref.data(),
             rfa.data(),
-            flux_nh3.data(),  //added for nh3_flux
-            flux_inst.data(), //added for instantaneous deposition flux of NH3
+            flux_nh3.data(),  
+            flux_inst.data(), 
+            total_flux_nh3.data(), // 
             trfa, //accumulated for the time
             dt, sdt, lifetime,
             gd.istart, gd.iend,
