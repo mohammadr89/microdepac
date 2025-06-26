@@ -275,7 +275,7 @@ namespace
                     }
 
                     // Convert back to [mol/mol/s] for tendency update
-                    TF flux_tendency =  vdnh3[ij] * c_target[ij] * dzi[k]; // 1/s
+                    TF flux_tendency =  vdnh3[ij] * c_target[ij] * dzi[k]; // [mol/mol/s]
 
                     // update tendencies:
                     //tnh3[ijk] -= decay*nh3[ijk];
