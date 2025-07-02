@@ -431,6 +431,7 @@ void Model<TF>::exec()
 
                 // KPP chemistry.
                 chemistry->exec(*thermo, timeloop->get_sub_time_step(), timeloop->get_dt());
+                //chemistry->exec(*thermo, *boundary, timeloop->get_sub_time_step(), timeloop->get_dt());
 
                 // Canopy drag.
                 canopy->exec();

@@ -18,6 +18,7 @@ template<typename> class Stats;
 template<typename> class Cross;
 template<typename> class Boundary_surface_lsm;
 template<typename> class Radiation;
+template<typename> class Chemistry;
 
 enum class Deposition_type {disabled, enabled, simple, average};
 
@@ -29,6 +30,8 @@ struct Deposition_tile
     std::vector<TF> vdnh3;    // Deposition velocity of NH3 (m s-1)
     std::vector<TF> ra;
     std::vector<TF> rb;
+    std::vector<TF> T_surface;   // Surface temperature for this tile
+    std::vector<TF> rh_surface;  // Surface RH for this tile
     std::vector<TF> obuk;
     std::vector<TF> ustar;
     std::vector<TF> ccomp_tot; // Compensation point (ug/m3)
@@ -51,7 +54,7 @@ template<typename TF>
 class Deposition
 {
 public:
-    Deposition(Master&, Grid<TF>&, Fields<TF>&, Radiation<TF>&, Input&);
+    Deposition(Master&, Grid<TF>&, Fields<TF>&, Radiation<TF>&, Chemistry<TF>&, Input&);
     ~Deposition();
 
     void init(Input&);
@@ -75,7 +78,8 @@ private:
     Master& master;
     Grid<TF>& grid;
     Fields<TF>& fields;
-    Radiation<TF>& radiation; // Add radiation reference
+    Radiation<TF>& radiation; 
+    Chemistry<TF>& chemistry; 
 
     bool sw_deposition;
     bool use_depac;          // Switch to toggle between original and DEPAC models
@@ -160,5 +164,7 @@ private:
     std::vector<TF> csoil_out_mean; // Grid-mean soil compensation point
     std::vector<TF> rc_tot_mean;   // Grid-mean total canopy resistance
     std::vector<TF> rc_eff_mean;   // Grid-mean effective canopy resistance
+    std::vector<TF> T_surface_mean;
+    std::vector<TF> rh_surface_mean;
 };
 #endif
