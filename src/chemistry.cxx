@@ -54,7 +54,8 @@ inline TF calc_factor(const TF z1, const TF z2, const TF L)
     // Calculate stability corrections
     TF psi1 = TF(0), psi2 = TF(0);
     
-    if (std::abs(L) > 1e-10) {
+    if (std::abs(L) > TF(1e-15))
+    {
         namespace most = Monin_obukhov;
         
         const TF z1_over_L = z1 / L;
@@ -97,9 +98,7 @@ namespace
         return std::make_pair(time_dim, time_dim_length);
     }
 
-// Updated PSS function with concentration scaling calculations
-namespace
-{
+    // Updated PSS function with concentration scaling calculations
     /**
      * Find closest grid point below target height
      */
@@ -108,7 +107,8 @@ namespace
                              const int kstart, const int kend)
     {
         int k_ref = kstart;
-        for (int k = kstart; k < kend - 1; ++k) {
+        for (int k = kstart; k < kend - 1; ++k)
+        {
             if (z[k] <= z_target) k_ref = k;
             else break;
         }
@@ -142,39 +142,39 @@ namespace
         
         return c1 + cstar1_val * scaling_factor;
     }
-
+    
     template<typename TF>
     void pss(
-            TF* restrict tnh3,
-            const TF* const restrict nh3,
-            const TF* const restrict jval,
-            const TF* const restrict emval,
-            const TF* const restrict vdnh3,
-            const TF* const restrict tprof,
-            const TF* const restrict qprof,
-            const TF* const restrict dzi,
-            const TF* const restrict rhoref,
-            const TF* const restrict z,       // Add grid height levels
-            const TF* const restrict obuk,    // Add Obukhov length (from surface)
-            const TF* const restrict z0m,     // Add surface roughness length
-            TF* restrict rfa,
-            TF* restrict flux_nh3, 
-            TF* restrict flux_inst, 
-            TF* restrict total_flux_nh3,
-            TF* restrict cstar1,  
-            TF* restrict cstar2,  
-            TF* restrict c_target, 
-            TF& trfa,
-            const TF dt,
-            const TF sdt,
-            const TF lifetime,
-            const TF z_target,
-            const int istart, const int iend,
-            const int jstart, const int jend,
-            const int kstart, const int kend,
-            const int jstride, const int kstride,
-            const TF dx,
-            const TF dy)
+        TF* restrict tnh3,
+        const TF* const restrict nh3,
+        const TF* const restrict jval,
+        const TF* const restrict emval,
+        const TF* const restrict vdnh3,
+        const TF* const restrict tprof,
+        const TF* const restrict qprof,
+        const TF* const restrict dzi,
+        const TF* const restrict rhoref,
+        const TF* const restrict z,       // Add grid height levels
+        const TF* const restrict obuk,    // Add Obukhov length (from surface)
+        const TF* const restrict z0m,     // Add surface roughness length
+        TF* restrict rfa,
+        TF* restrict flux_nh3, 
+        TF* restrict flux_inst, 
+        TF* restrict total_flux_nh3,
+        TF* restrict cstar1,  
+        TF* restrict cstar2,  
+        TF* restrict c_target, 
+        TF& trfa,
+        const TF dt,
+        const TF sdt,
+        const TF lifetime,
+        const TF z_target,
+        const int istart, const int iend,
+        const int jstart, const int jend,
+        const int kstart, const int kend,
+        const int jstride, const int kstride,
+        const TF dx,
+        const TF dy)
     {
         const TF xmh2o = 18.015265;
         const TF xmnh3 = 17.031;
@@ -231,7 +231,7 @@ namespace
                         const TF neutral_factor = calc_factor(z_1, z_2, TF(1e30)); // For neutral atmosphere (no stability)
                         
                         // Calculate cstar2 using simple logarithmic formula (no stability correction)
-                        if (std::abs(neutral_factor) > TF(1e-10))
+                        if (std::abs(neutral_factor) > TF(1e-15))
                         {
                             cstar2[ij] = +1.0 * (c_2 - c_1) / neutral_factor;
                         }
@@ -241,18 +241,25 @@ namespace
                         }
                         
                         // Calculate cstar1 with stability correction
-                        if (std::abs(gradient_factor) > TF(1e-10))
+                        if (std::abs(gradient_factor) > TF(1e-15))
                         {
                             cstar1[ij] = +1.0 * (c_2 - c_1) / gradient_factor;
                         }
-
+                        else
+                        {
+                            cstar1[ij] = TF(0.0);  // Add this else clause for safety
+                        }
+    
+                        const TF scaling_factor = calc_factor(z_1, z_target, L);
+                        c_target[ij] = c_1 + cstar1[ij] * scaling_factor;
+    
                         // Calculate and accumulate flux for this RK3 step
                         // Note: flux is accumulated (+=) and scaled by sdt
     
                         // // Calculate instantaneous flux first (original method)
                         // flux_inst[ij] = (-1.0) * vdnh3[ij] * nh3[ijk] * rhoref[k] * xmair_i * xmnh3; // [kg(NH3) m-2 s-1]
                         flux_inst[ij] = (-1.0) * vdnh3[ij] * c_target[ij] * rhoref[k] * xmair_i * xmnh3; // [kg(NH3) m-2 s-1]
-
+    
                         // accumulate over sub-timestep for statistics (gets reset periodically)
                         TF flux = flux_inst[ij] * sdt; // [kg m⁻² s⁻¹] × [s] = [kg m⁻²] Scale by timestep for accumulation     
                         flux_nh3[ij] += flux;        // For period statistics - Accumulate [kg m⁻²]
@@ -260,21 +267,23 @@ namespace
                         // accumulate total flux (never gets reset)
                         total_flux_nh3[ij] += flux;  // [kg m⁻²]
     
-
                         // decay = vdnh3[ij]*dzi[k] + lti;   // 1/s
-                        decay = lti;   // 1/s
+                        if (std::abs(nh3[ijk]) > TF(1e-15)) //to prevent division by zero
+                        {
+                            decay = (vdnh3[ij] * dzi[k] * c_target[ij] / nh3[ijk]) + lti;   // 1/s
+                        }
+                        else
+                        {
+                        decay = lti; // 1/s
+                        }
                     }
                     else
                     { 
                         decay = lti; // 1/s
                     }
 
-                    // Convert back to [mol/mol/s] for tendency update
-                    TF flux_tendency =  vdnh3[ij] * c_target[ij] * dzi[k]; // [mol/mol/s]
-
                     // update tendencies:
-                    //tnh3[ijk] -= decay*nh3[ijk];
-                    tnh3[ijk] -= (decay * nh3[ijk]) + flux_tendency;
+                    tnh3[ijk] -= decay*nh3[ijk];
     
                     // Get statistics for reaction fluxes:
                     //if (abs(sdt/dt - 1./3.) < 1e-5)
@@ -287,7 +296,6 @@ namespace
                 } // i
         } // k
     }
-}
 }
 
 template<typename TF>
@@ -752,7 +760,9 @@ void Chemistry<TF>::calc_c20m(Boundary<TF>& boundary)
     for (int j = gd.jstart; j < gd.jend; ++j) {
         for (int i = gd.istart; i < gd.iend; ++i) {
             const int ij = i + j * gd.jstride;
-            const int ijk1 = i + j * gd.jstride + gd.kstart * gd.ijcells;
+            // const int ijk1 = i + j * gd.jstride + gd.kstart * gd.ijcells;
+            const int ijk1 = i + j * gd.jstride + gd.kstart * gd.kstride;
+
             
             // Get concentration at first grid level
             const TF c_1 = fields.sp.at("nh3")->fld[ijk1];
@@ -765,10 +775,6 @@ void Chemistry<TF>::calc_c20m(Boundary<TF>& boundary)
             
             // Calculate scaling factor from z_1 to target height
             const TF scaling_factor = calc_factor(z_1, target_height, obuk[ij]);
-            
-            // Apply fixed method formula (Approach B)
-            c_target[ij] = c_1 + cstar_fixed * scaling_factor;
-            
             
             // Calculate c20m_grid: Find closest grid point to target height
             int k_closest = gd.kstart;
@@ -783,7 +789,9 @@ void Chemistry<TF>::calc_c20m(Boundary<TF>& boundary)
             }
             
             // Get actual simulated concentration at closest grid point
-            const int ijk_closest = i + j * gd.jstride + k_closest * gd.ijcells;
+            //const int ijk_closest = i + j * gd.jstride + k_closest * gd.ijcells;
+            const int ijk_closest = i + j * gd.jstride + k_closest * gd.kstride;
+
             c20m_grid[ij] = fields.sp.at("nh3")->fld[ijk_closest];
 
             const TF concentration_diff = c_target[ij] - c20m_grid[ij];
