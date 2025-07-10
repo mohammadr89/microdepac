@@ -20,7 +20,6 @@
  * along with MicroHH.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-//#include <cstdio>
 #include <cstdio>
 #include <iostream>
 #include <sstream>
@@ -42,6 +41,31 @@
 #include "boundary.h"
 #include "cross.h"
 #include <vector> 
+//#include "monin_obukhov.h"
+
+/*
+template<typename TF>
+inline TF calc_factor(const TF z1, const TF z2, const TF L)
+{
+    // Calculate stability corrections
+    TF psi1 = TF(0), psi2 = TF(0);
+    
+    if (std::abs(L) > TF(1e-15))
+    {
+        namespace most = Monin_obukhov;
+        
+        const TF z1_over_L = z1 / L;
+        const TF z2_over_L = z2 / L;
+        
+        psi1 = (z1_over_L <= TF(0)) ? 
+            most::psih_unstable(z1_over_L) : most::psih_stable(z1_over_L);
+        psi2 = (z2_over_L <= TF(0)) ? 
+            most::psih_unstable(z2_over_L) : most::psih_stable(z2_over_L);
+    }
+    
+    return (std::log(z2/z1) - psi2 + psi1) / Constants::kappa<TF>;
+}
+*/
 
 namespace
 {
@@ -71,6 +95,46 @@ namespace
         return std::make_pair(time_dim, time_dim_length);
     }
 
+    /*
+    template<typename TF>
+    inline int find_ref_below(const TF* const z, const TF z_target, 
+                             const int kstart, const int kend)
+    {
+        int k_ref = kstart;
+        for (int k = kstart; k < kend - 1; ++k)
+        {
+            if (z[k] <= z_target) k_ref = k;
+            else break;
+        }
+        return k_ref;
+    }
+    
+    template<typename TF>
+    TF calc_approach_B(
+        const TF cstar1_val,
+        const TF* const nh3,
+        const TF* const z,
+        const TF z_target,
+        const TF L,
+        const int i, const int j,
+        const int kstart, const int kend,
+        const int jstride, const int kstride)
+    {
+        // Find optimal reference height
+        const int k1 = find_ref_below(z, z_target, kstart, kend);
+        
+        // Get reference concentration and height
+        const int ijk1 = i + j * jstride + k1 * kstride;
+        const TF c1 = nh3[ijk1];
+        const TF z1 = z[k1];
+        
+        // Calculate factor using general function
+        const TF scaling_factor = calc_factor(z1, z_target, L);      // For scaling to target height
+        
+        return c1 + cstar1_val * scaling_factor;
+    }
+    */
+
     template<typename TF>
     void pss(
         TF* restrict tnh3,
@@ -82,97 +146,141 @@ namespace
         const TF* const restrict qprof,
         const TF* const restrict dzi,
         const TF* const restrict rhoref,
+        // const TF* const restrict z,       // Add grid height levels
+        // const TF* const restrict obuk,    // Add Obukhov length (from surface)
+        // const TF* const restrict z0m,     // Add surface roughness length
         TF* restrict rfa,
         TF* restrict flux_nh3, 
         TF* restrict flux_inst, 
         TF* restrict total_flux_nh3,
+        // TF* restrict cstar1,  
+        // TF* restrict cstar2,  
+        // TF* restrict c_target, 
         TF& trfa,
         const TF dt,
         const TF sdt,
         const TF lifetime,
+        // const TF z_target,
         const int istart, const int iend,
         const int jstart, const int jend,
         const int kstart, const int kend,
         const int jstride, const int kstride,
         const TF dx,
         const TF dy)
+    {
+        const TF xmh2o = 18.015265;
+        const TF xmnh3 = 17.031;
+        const TF xmh2o_i = TF(1) / xmh2o;
+        const TF xmair = 28.9647;       // Molar mass of dry air  [kg kmol-1]
+        const TF xmair_i = TF(1) / xmair;
+        const TF Na = 6.02214086e23; // Avogadros number [molecules mol-1]
+    
+        // Update the time integration of the reaction fluxes with the full timestep on first RK3 step
+        //if (abs(sdt/dt - 1./3.) < 1e-5) trfa += dt;
+        trfa += sdt;
+    
+        // COMMENTED OUT: Import Monin_obukhov namespace for stability functions
+        // namespace most = Monin_obukhov;
+    
+        for (int k=kstart; k<kend; ++k)
         {
-        
-            const TF xmh2o = 18.015265;
-            const TF xmnh3 = 17.031;
-            const TF xmh2o_i = TF(1) / xmh2o;
-            const TF xmair = 28.9647;       // Molar mass of dry air  [kg kmol-1]
-            const TF xmair_i = TF(1) / xmair;
-            const TF Na = 6.02214086e23; // Avogadros number [molecules mol-1]
-        
-        
-            // Update the time integration of the reaction fluxes with the full timestep on first RK3 step
-            //if (abs(sdt/dt - 1./3.) < 1e-5) trfa += dt;
-            trfa += sdt;
-        
-            for (int k=kstart; k<kend; ++k)
-            {
-                const TF C_M = TF(1e-3) * rhoref[k] * Na * xmair_i;   // molecules/cm3 for chmistry!
-        
-                // From ppb (units mixing ratio) to molecules/cm3 --> changed: now mol/mol unit for transported tracers:
-                const TF CFACTOR = C_M;
-                const TF sdt_cfac_i = TF(1) / (sdt * CFACTOR);
-                const TF lti = TF(1)/lifetime;  // 1/s
-                TF decay;
-                for (int j=jstart; j<jend; ++j)
-                #pragma ivdep
-                    for (int i=istart; i<iend; ++i)
+            const TF C_M = TF(1e-3) * rhoref[k] * Na * xmair_i;   // molecules/cm3 for chmistry!
+    
+            // From ppb (units mixing ratio) to molecules/cm3 --> changed: now mol/mol unit for transported tracers:
+            const TF CFACTOR = C_M;
+            const TF sdt_cfac_i = TF(1) / (sdt * CFACTOR);
+            const TF lti = TF(1)/lifetime;  // 1/s
+            TF decay;
+            for (int j=jstart; j<jend; ++j)
+            #pragma ivdep
+                for (int i=istart; i<iend; ++i)
+                {
+                    const int ijk = i + j*jstride + k*kstride;
+                    const int ij = i + j*jstride;
+    
+                    // kg/kg --> molH2O/molAir --*C_M--> molecules/cm3 limit to 1 molecule/cm3 to avoid error usr_HO2_HO2
+                    // const TF C_H2O = std::max(qt[ijk] * xmair * C_M * xmh2o_i, TF(1));
+                    // const TF TEMP = temp[ijk];
+    
+                    if (k==kstart)
                     {
-                        const int ijk = i + j*jstride + k*kstride;
-                        const int ij = i + j*jstride;
-        
-                        // kg/kg --> molH2O/molAir --*C_M--> molecules/cm3 limit to 1 molecule/cm3 to avoid error usr_HO2_HO2
-                        // const TF C_H2O = std::max(qt[ijk] * xmair * C_M * xmh2o_i, TF(1));
-                        // const TF TEMP = temp[ijk];
-        
-                        if (k==kstart)
+                        // COMMENTED OUT: Add new concentration scaling calculations
+                        /*
+                        // Get concentrations at two vertical levels (kstart and kstart+1)
+                        const int ijk1 = i + j*jstride + kstart*kstride;
+                        const int ijk2 = i + j*jstride + (kstart+1)*kstride;
+                        
+                        const TF c_1 = nh3[ijk1];
+                        const TF c_2 = nh3[ijk2];
+                        
+                        // Heights at the two levels
+                        const TF z_1 = z[kstart];
+                        const TF z_2 = z[kstart+1];
+                        
+                        // Obukhov length from surface
+                        const TF L = obuk[ij];
+                        
+                        const TF gradient_factor = calc_factor(z_1, z_2, L);       // For calculating c* from gradient
+                        const TF neutral_factor = calc_factor(z_1, z_2, TF(1e30)); // For neutral atmosphere (no stability)
+                        
+                        // Calculate cstar2 using simple logarithmic formula (no stability correction)
+                        if (std::abs(neutral_factor) > TF(1e-15))
                         {
-                            // Calculate and accumulate flux for this RK3 step
-                            // Note: flux is accumulated (+=) and scaled by sdt
-        
-                            //TF flux = (-1.0) * vdnh3[ij] * nh3[ijk] * rhoref[k] * xmair_i * xmnh3 * sdt; // [kg(NH3) m-2 s-1]
-                            //TF flux[ij] = (-1.0) * 1.0e3 * vdnh3[ij] * nh3[ijk] * rhoref[k] * xmair_i * sdt; // [mol(NH3) m-2 s-1 * sdt!!!]
-                            //flux_nh3[ij] = (-1.0) * 1.0e3 * vdnh3[ij] * nh3[ijk] * rhoref[k] * xmair_i * sdt; // [mol(NH3) m-2 s-1 * sdt!!!]
-        
-        
-                            // Calculate instantaneous flux first [kg(NH3) m⁻² s⁻¹]
-                            flux_inst[ij] = (-1.0) * vdnh3[ij] * nh3[ijk] * rhoref[k] * xmair_i * xmnh3; // [kg(NH3) m-2 s-1]
-                            // Then calculate accumulated flux using the instantaneous value
-                            TF flux = flux_inst[ij] * sdt; // Scale by timestep for accumulation
-        
-                            //TF flux = (-1.0) * vdnh3[ij] * nh3[ijk] * rhoref[k] * xmair_i * xmnh3 * sdt; // [kg(NH3) m-2 s-1] 
-                            flux_nh3[ij] += flux;        // For period statistics
-        
-                            // Accumulate total flux (never gets reset) [kg m⁻²]
-                            total_flux_nh3[ij] += flux;
-        
-                            decay = vdnh3[ij]*dzi[k] + lti;   // 1/s
+                            cstar2[ij] = +1.0 * (c_2 - c_1) / neutral_factor;
                         }
                         else
-                        { 
-                            decay = lti; // 1/s
+                        {
+                            cstar2[ij] = TF(0.0);  // Avoid division by zero
                         }
-                        // update tendencies:
-                        tnh3[ijk] -= decay*nh3[ijk];
-        
-                        // Get statistics for reaction fluxes:
-                        //if (abs(sdt/dt - 1./3.) < 1e-5)
-                        //{
-                        //    for (int l=0; l<NREACT; ++l)
-                        //        rfa[(k-kstart)*NREACT+l] +=  RF[l]*dt;    // take the first evaluation in the RK3 steps, but with full time step.
-                        //}
-        
-                        //  Reculculate tendency and add to the tendency of the transported tracers:
-        
-        
-                    } // i
-            } // k
-        }
+                        
+                        // Calculate cstar1 with stability correction
+                        if (std::abs(gradient_factor) > TF(1e-15))
+                        {
+                            cstar1[ij] = +1.0 * (c_2 - c_1) / gradient_factor;
+                        }
+                        else
+                        {
+                            cstar1[ij] = TF(0.0);  // Add this else clause for safety
+                        }
+    
+                        const TF scaling_factor = calc_factor(z_1, z_target, L);
+                        c_target[ij] = c_1 + cstar1[ij] * scaling_factor;
+                        */
+    
+                        // Calculate and accumulate flux for this RK3 step
+                        // Note: flux is accumulated (+=) and scaled by sdt
+    
+                        // Calculate instantaneous flux using first grid level concentration (SIMPLIFIED)
+                        flux_inst[ij] = (-1.0) * vdnh3[ij] * nh3[ijk] * rhoref[k] * xmair_i * xmnh3; // [kg(NH3) m-2 s-1]
+    
+                        // accumulate over sub-timestep for statistics (gets reset periodically)
+                        TF flux = flux_inst[ij] * sdt; // [kg m⁻² s⁻¹] × [s] = [kg m⁻²] Scale by timestep for accumulation     
+                        flux_nh3[ij] += flux;        // For period statistics - Accumulate [kg m⁻²]
+                        
+                        // accumulate total flux (never gets reset)
+                        total_flux_nh3[ij] += flux;  // [kg m⁻²]
+    
+                        decay = vdnh3[ij]*dzi[k] + lti;   // 1/s (SIMPLIFIED - no concentration scaling)
+                    }
+                    else
+                    { 
+                        decay = lti; // 1/s
+                    }
+    
+                    // update tendencies:
+                    tnh3[ijk] -= decay*nh3[ijk];
+    
+                    // Get statistics for reaction fluxes:
+                    //if (abs(sdt/dt - 1./3.) < 1e-5)
+                    //{
+                    //    for (int l=0; l<NREACT; ++l)
+                    //        rfa[(k-kstart)*NREACT+l] +=  RF[l]*dt;    // take the first evaluation in the RK3 steps, but with full time step.
+                    //}
+    
+                    //  Reculculate tendency and add to the tendency of the transported tracers:
+                } // i
+        } // k
+    }
 }
 
 template<typename TF>
@@ -185,10 +293,15 @@ Chemistry<TF>::Chemistry(Master& masterin, Grid<TF>& gridin, Fields<TF>& fieldsi
     sw_chemistry = inputin.get_item<bool>("chemistry", "swchemistry", "", false);
     //lifetime     = inputin.get_item<TF>("chemistry", "lifetime", "", (TF)72000);  // seconds (20 hour default)
     lifetime     = inputin.get_item<TF>("chemistry", "lifetime", "", (TF)1e30);  // seconds
+    // COMMENTED OUT: z_target = inputin.get_item<TF>("chemistry", "z_target", "");
+
     master.print_message("Lifetime of the tracer:  = %13.5e s \n", lifetime);
     if (!sw_chemistry)
         return;
-    deposition = std::make_shared<Deposition<TF>>(masterin, gridin, fieldsin, radiationin, *this, inputin);
+
+    deposition = std::make_shared<Deposition <TF>>(masterin, gridin, fieldsin, radiationin, inputin);
+    //deposition = std::make_shared<Deposition<TF>>(masterin, gridin, fieldsin, radiationin, *this, inputin);
+    ////The *this passes the current Chemistry object as a reference to the Deposition constructor.
 }
 
 template <typename TF>
@@ -250,6 +363,13 @@ void Chemistry<TF>::exec_stats(const int iteration, const double time, Stats<TF>
             }
         
         stats.calc_stats_2d("total_flux_mol_ha", total_flux_mol_ha, no_offset);  // Total [mol ha⁻¹]
+
+        // COMMENTED OUT: Calculate statistics for new variables
+        // stats.calc_stats_2d("cstar1", cstar1, no_offset);
+        // stats.calc_stats_2d("cstar2", cstar2, no_offset);
+        // stats.calc_stats_2d("c20m_grid", c20m_grid, no_offset);
+        // stats.calc_stats_2d("c_target", c_target, no_offset);
+        // stats.calc_stats_2d("c_diff_flux", c_diff_flux, no_offset);
 
         // Reset the periodic flux after saving to stats
         // Reset ONLY the periodic flux (NOT the total)
@@ -320,6 +440,23 @@ void Chemistry<TF>::init(Input& inputin)
     total_flux_nh3.resize(gd.ijcells);
     std::fill(total_flux_nh3.begin(), total_flux_nh3.end(), TF(0));
 
+    // COMMENTED OUT: Initialize new arrays for concentration scaling with zeros
+    // cstar1.resize(gd.ijcells);
+    // std::fill(cstar1.begin(), cstar1.end(), TF(0));  // Initialize with zeros
+
+    // cstar2.resize(gd.ijcells);
+    // std::fill(cstar2.begin(), cstar2.end(), TF(0));  // Initialize with zeros
+    
+    // c20m_grid.resize(gd.ijcells);
+    // std::fill(c20m_grid.begin(), c20m_grid.end(), TF(0));
+
+    // Only one concentration array needed now (optimal method)
+    // c_target.resize(gd.ijcells);
+    // std::fill(c_target.begin(), c_target.end(), TF(0));
+
+    // c_diff_flux.resize(gd.ijcells);
+    // std::fill(c_diff_flux.begin(), c_diff_flux.end(), TF(0));
+
     // initialize deposition routine:
     deposition-> init(inputin);
 
@@ -333,162 +470,174 @@ template <typename TF>
 void Chemistry<TF>::create(
     const Timeloop<TF>& timeloop, std::string sim_name, Netcdf_handle& input_nc,
     Stats<TF>& stats, Cross<TF>& cross)
+{
+    if (!sw_chemistry)
+        return;
+    
+    auto& gd = grid.get_grid_data();
+    int iotime = timeloop.get_iotime();
+    
+    Netcdf_group& group_nc = input_nc.get_group("timedep_chem");
+    int time_dim_length;
+    std::string time_dim;
+    
+    for (std::string varname : jname)    // check dimensions:
     {
-        if (!sw_chemistry)
-            return;
-        
-        auto& gd = grid.get_grid_data();
-        int iotime = timeloop.get_iotime();
-        
-        Netcdf_group& group_nc = input_nc.get_group("timedep_chem");
-        int time_dim_length;
-        std::string time_dim;
-        
-        for (std::string varname : jname)    // check dimensions:
-        {
-            std::map<std::string, int> dims = group_nc.get_variable_dimensions(varname);
-            std::pair<std::string, int> unique_time = check_for_unique_time_dim(dims);
-            time_dim = unique_time.first;
-            time_dim_length = unique_time.second;
-            time.resize(time_dim_length);
-        }
-        
-        for (std::string varname : ename)    // check dimension also of emissions
-        {
-            std::map<std::string, int> dims = group_nc.get_variable_dimensions(varname);
-            std::pair<std::string, int> unique_time = check_for_unique_time_dim(dims);
-            time_dim = unique_time.first;
-            time_dim_length = unique_time.second;
-            time.resize(time_dim_length);
-        }
-        
-        jo31d.resize(time_dim_length);
-        jh2o2.resize(time_dim_length);
-        jno2.resize(time_dim_length);
-        jno3.resize(time_dim_length);
-        jn2o5.resize(time_dim_length);
-        jch2or.resize(time_dim_length);
-        jch2om.resize(time_dim_length);
-        jch3o2h.resize(time_dim_length);
-        emi_isop.resize(time_dim_length);
-        emi_no.resize(time_dim_length);
-        
-        group_nc.get_variable(time, time_dim, {0}, {time_dim_length});
-        group_nc.get_variable(jo31d, jname[0],  {0}, {time_dim_length});
-        group_nc.get_variable(jh2o2, jname[1],  {0}, {time_dim_length});
-        group_nc.get_variable(jno2, jname[2],  {0}, {time_dim_length});
-        group_nc.get_variable(jno3, jname[3],  {0}, {time_dim_length});
-        group_nc.get_variable(jn2o5, jname[4],  {0}, {time_dim_length});
-        group_nc.get_variable(jch2or, jname[5],  {0}, {time_dim_length});
-        group_nc.get_variable(jch2om, jname[6],  {0}, {time_dim_length});
-        group_nc.get_variable(jch3o2h, jname[7],  {0}, {time_dim_length});
-        group_nc.get_variable(emi_isop, ename[0],  {0}, {time_dim_length});
-        group_nc.get_variable(emi_no,   ename[1],  {0}, {time_dim_length});
-        
-        // Store output of averaging.
-        const TF NREACT = TF(1);
-        //rfa.resize(NREACT*gd.ktot);
-        // for (int l=0;l<NREACT*gd.ktot;++l)
-        //     rfa[l] = 0.0;
-        // trfa = (TF)0.0;
-        qprof.resize(gd.kcells);
-        tprof.resize(gd.kcells);
-        
-        if (stats.get_switch())
-        {
-            // Stats:
-            const std::string group_name = "default";
-            const std::vector<std::string> stat_op_def = {"mean", "2", "3", "4", "w", "grad", "diff", "flux", "path"};
-            const std::vector<std::string> stat_op_w = {"mean", "2", "3", "4"};
-            const std::vector<std::string> stat_op_p = {"mean", "2", "w", "grad"};
-        
-            std::stringstream filename;
-            filename << sim_name << "." << "chemistry" << "." << std::setfill('0') << std::setw(7) << iotime << ".nc";
-        
-            // Create new NetCDF file in Mask<TF> m
-            m.data_file = std::make_unique<Netcdf_file>(master, filename.str(), Netcdf_mode::Create);
-        
-            // Create dimensions.
-            m.data_file->add_dimension("z", gd.kmax);
-            m.data_file->add_dimension("zh", gd.kmax+1);
-            m.data_file->add_dimension("rfaz", NREACT*gd.ktot);
-            m.data_file->add_dimension("ijcells",gd.ijcells);
-            m.data_file->add_dimension("time");
-        
-            // Create variables belonging to dimensions.
-            Netcdf_handle& iter_handle =
-                m.data_file->group_exists("default") ? m.data_file->get_group("default") : m.data_file->add_group("default");
-        
-            m.iter_var = std::make_unique<Netcdf_variable<int>>(iter_handle.add_variable<int>("iter", {"time"}));
-            m.iter_var->add_attribute("units", "-");
-            m.iter_var->add_attribute("long_name", "Iteration number");
-        
-            m.time_var = std::make_unique<Netcdf_variable<TF>>(m.data_file->template add_variable<TF>("time", {"time"}));
-            if (timeloop.has_utc_time())
-                m.time_var->add_attribute("units", "seconds since " + timeloop.get_datetime_utc_start_string());
-            else
-                m.time_var->add_attribute("units", "seconds since start");
-            m.time_var->add_attribute("long_name", "Time");
-        
-            Netcdf_variable<TF> z_var = m.data_file->template add_variable<TF>("z", {"z"});
-            z_var.add_attribute("units", "m");
-            z_var.add_attribute("long_name", "Full level height");
-        
-            Netcdf_variable<TF> zh_var = m.data_file->template add_variable<TF>("zh", {"zh"});
-            zh_var.add_attribute("units", "m");
-            zh_var.add_attribute("long_name", "Half level height");
-        
-            std::string name = "chem_budget";
-            std::string longname = "chemistry budget per layer";
-            std::string unit = "molecules cm-3 s-1";
-            Netcdf_variable<TF> rfaz_var = m.data_file->template add_variable<TF>("rfaz", {"rfaz"});
-            rfaz_var.add_attribute("units", unit);
-            rfaz_var.add_attribute("long_name", longname);
-        
-            // add a profile of reaction rates x z
-            Level_type level =  Level_type::Full;
-        
-            Netcdf_handle& handle =
-                m.data_file->group_exists("default") ? m.data_file->get_group("default") : m.data_file->add_group("default");
-            Prof_var<TF> tmp{handle.add_variable<TF>(name, {"time", "rfaz"}), std::vector<TF>(gd.ktot*NREACT), level};
-            m.profs.emplace(
-                    std::piecewise_construct, std::forward_as_tuple(name), std::forward_as_tuple(std::move(tmp)));
-        
-            m.profs.at(name).ncvar.add_attribute("units", unit);
-            m.profs.at(name).ncvar.add_attribute("long_name", longname);
-        
-            // Save the grid variables.
-            std::vector<TF> z_nogc (gd.z. begin() + gd.kstart, gd.z. begin() + gd.kend  );
-            std::vector<TF> zh_nogc(gd.zh.begin() + gd.kstart, gd.zh.begin() + gd.kend+1);
-            z_var .insert( z_nogc, {0});
-            zh_var.insert(zh_nogc, {0});
-        
-            // Synchronize the NetCDF file.
-            m.data_file->sync();
-        
-            m.nmask. resize(gd.kcells);
-            m.nmaskh.resize(gd.kcells);
-        
-            // add the deposition-velocity timeseries in deposition group statistics
-            const std::string group_named = "deposition";
-        
-            // used in chemistry:
-            stats.add_time_series("vdnh3", "NH3 deposition velocity", "m s-1", group_named);
-            //stats.add_time_series("flux_nh3", "NH3 surface flux", "mol(NH3) m-2 s-1", group_named);
-        }
-        
-        // add cross-sections
-        if (cross.get_switch())
-        {
-            //std::vector<std::string> allowed_crossvars = {"vdnh3"};
-            std::vector<std::string> allowed_crossvars = {"vdnh3", "flux_nh3", "flux_inst", "total_flux_mol_ha"};
-        
-            cross_list = cross.get_enabled_variables(allowed_crossvars);
-        
-            // `deposition->create()` only creates cross-sections.
-            deposition->create(stats, cross);
-        }
+        std::map<std::string, int> dims = group_nc.get_variable_dimensions(varname);
+        std::pair<std::string, int> unique_time = check_for_unique_time_dim(dims);
+        time_dim = unique_time.first;
+        time_dim_length = unique_time.second;
+        time.resize(time_dim_length);
     }
+    
+    for (std::string varname : ename)    // check dimension also of emissions
+    {
+        std::map<std::string, int> dims = group_nc.get_variable_dimensions(varname);
+        std::pair<std::string, int> unique_time = check_for_unique_time_dim(dims);
+        time_dim = unique_time.first;
+        time_dim_length = unique_time.second;
+        time.resize(time_dim_length);
+    }
+    
+    jo31d.resize(time_dim_length);
+    jh2o2.resize(time_dim_length);
+    jno2.resize(time_dim_length);
+    jno3.resize(time_dim_length);
+    jn2o5.resize(time_dim_length);
+    jch2or.resize(time_dim_length);
+    jch2om.resize(time_dim_length);
+    jch3o2h.resize(time_dim_length);
+    emi_isop.resize(time_dim_length);
+    emi_no.resize(time_dim_length);
+    
+    group_nc.get_variable(time, time_dim, {0}, {time_dim_length});
+    group_nc.get_variable(jo31d, jname[0],  {0}, {time_dim_length});
+    group_nc.get_variable(jh2o2, jname[1],  {0}, {time_dim_length});
+    group_nc.get_variable(jno2, jname[2],  {0}, {time_dim_length});
+    group_nc.get_variable(jno3, jname[3],  {0}, {time_dim_length});
+    group_nc.get_variable(jn2o5, jname[4],  {0}, {time_dim_length});
+    group_nc.get_variable(jch2or, jname[5],  {0}, {time_dim_length});
+    group_nc.get_variable(jch2om, jname[6],  {0}, {time_dim_length});
+    group_nc.get_variable(jch3o2h, jname[7],  {0}, {time_dim_length});
+    group_nc.get_variable(emi_isop, ename[0],  {0}, {time_dim_length});
+    group_nc.get_variable(emi_no,   ename[1],  {0}, {time_dim_length});
+    
+    // Store output of averaging.
+    const TF NREACT = TF(1);
+    //rfa.resize(NREACT*gd.ktot);
+    // for (int l=0;l<NREACT*gd.ktot;++l)
+    //     rfa[l] = 0.0;
+    // trfa = (TF)0.0;
+    qprof.resize(gd.kcells);
+    tprof.resize(gd.kcells);
+    
+    if (stats.get_switch())
+    {
+        // Stats:
+        const std::string group_name = "default";
+        const std::vector<std::string> stat_op_def = {"mean", "2", "3", "4", "w", "grad", "diff", "flux", "path"};
+        const std::vector<std::string> stat_op_w = {"mean", "2", "3", "4"};
+        const std::vector<std::string> stat_op_p = {"mean", "2", "w", "grad"};
+    
+        std::stringstream filename;
+        filename << sim_name << "." << "chemistry" << "." << std::setfill('0') << std::setw(7) << iotime << ".nc";
+    
+        // Create new NetCDF file in Mask<TF> m
+        m.data_file = std::make_unique<Netcdf_file>(master, filename.str(), Netcdf_mode::Create);
+    
+        // Create dimensions.
+        m.data_file->add_dimension("z", gd.kmax);
+        m.data_file->add_dimension("zh", gd.kmax+1);
+        m.data_file->add_dimension("rfaz", NREACT*gd.ktot);
+        m.data_file->add_dimension("ijcells",gd.ijcells);
+        m.data_file->add_dimension("time");
+    
+        // Create variables belonging to dimensions.
+        Netcdf_handle& iter_handle =
+            m.data_file->group_exists("default") ? m.data_file->get_group("default") : m.data_file->add_group("default");
+    
+        m.iter_var = std::make_unique<Netcdf_variable<int>>(iter_handle.add_variable<int>("iter", {"time"}));
+        m.iter_var->add_attribute("units", "-");
+        m.iter_var->add_attribute("long_name", "Iteration number");
+    
+        m.time_var = std::make_unique<Netcdf_variable<TF>>(m.data_file->template add_variable<TF>("time", {"time"}));
+        if (timeloop.has_utc_time())
+            m.time_var->add_attribute("units", "seconds since " + timeloop.get_datetime_utc_start_string());
+        else
+            m.time_var->add_attribute("units", "seconds since start");
+        m.time_var->add_attribute("long_name", "Time");
+    
+        Netcdf_variable<TF> z_var = m.data_file->template add_variable<TF>("z", {"z"});
+        z_var.add_attribute("units", "m");
+        z_var.add_attribute("long_name", "Full level height");
+    
+        Netcdf_variable<TF> zh_var = m.data_file->template add_variable<TF>("zh", {"zh"});
+        zh_var.add_attribute("units", "m");
+        zh_var.add_attribute("long_name", "Half level height");
+    
+        std::string name = "chem_budget";
+        std::string longname = "chemistry budget per layer";
+        std::string unit = "molecules cm-3 s-1";
+        Netcdf_variable<TF> rfaz_var = m.data_file->template add_variable<TF>("rfaz", {"rfaz"});
+        rfaz_var.add_attribute("units", unit);
+        rfaz_var.add_attribute("long_name", longname);
+    
+        // add a profile of reaction rates x z
+        Level_type level =  Level_type::Full;
+    
+        Netcdf_handle& handle =
+            m.data_file->group_exists("default") ? m.data_file->get_group("default") : m.data_file->add_group("default");
+        Prof_var<TF> tmp{handle.add_variable<TF>(name, {"time", "rfaz"}), std::vector<TF>(gd.ktot*NREACT), level};
+        m.profs.emplace(
+                std::piecewise_construct, std::forward_as_tuple(name), std::forward_as_tuple(std::move(tmp)));
+    
+        m.profs.at(name).ncvar.add_attribute("units", unit);
+        m.profs.at(name).ncvar.add_attribute("long_name", longname);
+    
+        // Save the grid variables.
+        std::vector<TF> z_nogc (gd.z. begin() + gd.kstart, gd.z. begin() + gd.kend  );
+        std::vector<TF> zh_nogc(gd.zh.begin() + gd.kstart, gd.zh.begin() + gd.kend+1);
+        z_var .insert( z_nogc, {0});
+        zh_var.insert(zh_nogc, {0});
+    
+        // Synchronize the NetCDF file.
+        m.data_file->sync();
+    
+        m.nmask. resize(gd.kcells);
+        m.nmaskh.resize(gd.kcells);
+    
+        // add the deposition-velocity timeseries in deposition group statistics
+        const std::string group_named = "deposition";
+    
+        // used in chemistry:
+        stats.add_time_series("vdnh3", "NH3 deposition velocity", "m s-1", group_named);
+        //stats.add_time_series("flux_nh3", "NH3 surface flux", "mol(NH3) m-2 s-1", group_named);
+
+        // COMMENTED OUT: stats for concentration scaling variables
+        // stats.add_time_series("cstar1", "C*_1 concentration scaling parameter", "mol mol-1", group_named);
+        // stats.add_time_series("cstar2", "C*_2 concentration scaling parameter", "mol mol-1", group_named);
+        // stats.add_time_series("c20m_grid", "NH3 concentration at closest grid point to 20m", "mol mol-1", group_named);
+        // stats.add_time_series("c_target", "NH3 concentration at target height (optimal)", "mol mol-1", group_named);
+        // stats.add_time_series("c_diff_flux", "Concentration difference flux (c_target - c20m_grid) × 10^9 × rho × conversion", "kg m-2 s-1", group_named);
+    
+        stats.add_time_series("total_flux_mol_ha", "NH3 total cumulative flux", "mol ha-1", group_named);
+    }
+    
+    // add cross-sections
+    if (cross.get_switch())
+    {
+        //std::vector<std::string> allowed_crossvars = {"vdnh3"};
+
+        // COMMENTED OUT: concentration scaling cross-sections
+        // std::vector<std::string> allowed_crossvars = {"vdnh3","flux_nh3","flux_inst","total_flux_mol_ha","cstar1","cstar2","c20m_grid","c_target","c_diff_flux"};
+
+        std::vector<std::string> allowed_crossvars = {"vdnh3","flux_nh3","flux_inst","total_flux_mol_ha"};
+        cross_list = cross.get_enabled_variables(allowed_crossvars);
+    
+        // `deposition->create()` only creates cross-sections.
+        deposition->create(stats, cross);
+    }
+}
 
 template<typename TF>
 void Chemistry<TF>::exec_cross(Cross<TF>& cross, unsigned long iotime)
@@ -525,6 +674,18 @@ void Chemistry<TF>::exec_cross(Cross<TF>& cross, unsigned long iotime)
         }
         else if (name == "flux_inst")  //added for instantaneous deposition flux of NH3
             cross.cross_plane(flux_inst.data(), no_offset, name, iotime);
+
+        // COMMENTED OUT: concentration scaling cross-sections
+        // else if (name == "cstar1")
+        //     cross.cross_plane(cstar1.data(), no_offset, name, iotime);
+        // else if (name == "cstar2")
+        //     cross.cross_plane(cstar2.data(), no_offset, name, iotime);
+        // else if (name == "c20m_grid")
+        //     cross.cross_plane(c20m_grid.data(), no_offset, name, iotime);
+        // else if (name == "c_target")
+        //     cross.cross_plane(c_target.data(), no_offset, name, iotime);
+        // else if (name == "c_diff_flux")
+        //     cross.cross_plane(c_diff_flux.data(), no_offset, name, iotime);
     }
 
     // see if to write per tile:
@@ -559,6 +720,85 @@ void Chemistry<TF>::update_time_dependent(Timeloop<TF>& timeloop, Boundary<TF>& 
 }
 
 #ifndef USECUDA
+
+// COMMENTED OUT: calc_c20m function
+/*
+template<typename TF>
+void Chemistry<TF>::calc_c20m(Boundary<TF>& boundary)
+{
+    if (!sw_chemistry)
+        return;
+        
+    auto& gd = grid.get_grid_data();
+    const TF target_height = z_target;
+    
+    // Constants for flux calculation (same as in pss function)
+    const TF xmair = 28.9647;       // Molar mass of dry air  [kg kmol-1]
+    const TF xmair_i = TF(1) / xmair;
+    const TF xmnh3 = 17.031;
+    const int k = gd.kstart;        // Surface level index
+    
+    // Get Obukhov length
+    const auto& tiles = boundary.get_tiles();
+    std::vector<TF> obuk(gd.ijcells, TF(0));
+    
+    for (const auto& tile : tiles) {
+        const auto& tile_data = tile.second;
+        for (int ij = 0; ij < gd.ijcells; ++ij) {
+            obuk[ij] += tile_data.fraction[ij] * tile_data.obuk[ij];
+        }
+    }
+    
+    // Calculate concentrations using FIXED method (existing cstar1)
+    for (int j = gd.jstart; j < gd.jend; ++j) {
+        for (int i = gd.istart; i < gd.iend; ++i) {
+            const int ij = i + j * gd.jstride;
+            const int ijk1 = i + j * gd.jstride + gd.kstart * gd.kstride;
+
+            
+            // Get concentration at first grid level
+            const TF c_1 = fields.sp.at("nh3")->fld[ijk1];
+            
+            // Get heights
+            const TF z_1 = gd.z[gd.kstart];
+            
+            // Use pre-calculated cstar1 from pss function
+            const TF cstar_fixed = cstar1[ij];
+            
+            // Calculate scaling factor from z_1 to target height
+            const TF scaling_factor = calc_factor(z_1, target_height, obuk[ij]);
+            
+            // Calculate c20m_grid: Find closest grid point to target height
+            int k_closest = gd.kstart;
+            TF min_distance = std::abs(gd.z[gd.kstart] - target_height);
+            
+            for (int k_grid = gd.kstart; k_grid < gd.kend; ++k_grid) {
+                TF distance = std::abs(gd.z[k_grid] - target_height);
+                if (distance < min_distance) {
+                    min_distance = distance;
+                    k_closest = k_grid;
+                }
+            }
+            
+            // Get actual simulated concentration at closest grid point
+            const int ijk_closest = i + j * gd.jstride + k_closest * gd.kstride;
+
+            c20m_grid[ij] = fields.sp.at("nh3")->fld[ijk_closest];
+
+            const TF concentration_diff = c_target[ij] - c20m_grid[ij];
+            c_diff_flux[ij] = concentration_diff * TF(1e9) * fields.rhoref[k] * xmair_i * xmnh3;
+        }
+    }
+}
+*/
+
+// what the following function (exec) does:
+//     Gets atmospheric conditions (temperature, humidity, wind)
+//     Calculates chemical reactions (like NH₃ decay)
+//     Computes surface fluxes (how much NH₃ deposits to ground)
+//     Updates concentrations for the next timestep
+//     Calls our new calc_c20m() to get 20m concentrations
+
 template <typename TF>
 void Chemistry<TF>::exec(Thermo<TF>& thermo,double sdt,double dt)
 {
@@ -575,7 +815,19 @@ void Chemistry<TF>::exec(Thermo<TF>& thermo,double sdt,double dt)
     qprof = fields.sp.at("qt")->fld_mean;
     //field3d_operators.calc_mean_profile(qprof.data(), fields.sp.at("qt")->fld.data());
 
+    // COMMENTED OUT: Get roughness length and Obukhov length from boundary
+    // const std::vector<TF>& z0m = boundary.get_z0m();
+    // const auto& tiles = boundary.get_tiles();
+    // std::vector<TF> obuk(gd.ijcells, TF(0));
+    
+    // for (const auto& tile : tiles) {
+    //     const auto& tile_data = tile.second;
+    //     for (int ij = 0; ij < gd.ijcells; ++ij) {
+    //         obuk[ij] += tile_data.fraction[ij] * tile_data.obuk[ij];
+    //     }
+    // }
 
+    // SIMPLIFIED PSS CALL - removed concentration scaling parameters
     pss<TF>(
             fields.st.at("nh3")->fld.data(),
             fields.sp.at("nh3")->fld.data(),
@@ -585,27 +837,31 @@ void Chemistry<TF>::exec(Thermo<TF>& thermo,double sdt,double dt)
             qprof.data(),
             gd.dzi.data(),
             fields.rhoref.data(),
+            // COMMENTED OUT: gd.z.data(),                   
+            // COMMENTED OUT: obuk.data(),                   // CHANGE TO obuk.data()
+            // COMMENTED OUT: z0m.data(),                    
             rfa.data(),
-            flux_nh3.data(),  
-            flux_inst.data(), 
-            total_flux_nh3.data(), // 
-            trfa, //accumulated for the time
+            flux_nh3.data(),
+            flux_inst.data(),
+            total_flux_nh3.data(), 
+            // COMMENTED OUT: cstar1.data(),               
+            // COMMENTED OUT: cstar2.data(),
+            // COMMENTED OUT: c_target.data(),
+            trfa,
             dt, sdt, lifetime,
+            // COMMENTED OUT: z_target,
             gd.istart, gd.iend,
             gd.jstart, gd.jend,
             gd.kstart, gd.kend,
             gd.icells, gd.ijcells,
-            gd.dx, gd.dy);    // Add these parameters
+            gd.dx, gd.dy);
+
+    // COMMENTED OUT: calc_c20m(boundary);
 
     fields.release_tmp(tmp);
-
-    //isop_stat<TF>(
-    //      fields.st.at("isop")->fld.data(), fields.sp.at("isop")->fld.data(),
-    //      gd.istart, gd.iend, gd.jstart, gd.jend, gd.kstart, gd.kend,
-    //      gd.icells, gd.ijcells);
 }
+
 #endif
 
 template class Chemistry<double>;
 //:template class Chemistry<float>;
-

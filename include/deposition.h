@@ -54,7 +54,8 @@ template<typename TF>
 class Deposition
 {
 public:
-    Deposition(Master&, Grid<TF>&, Fields<TF>&, Radiation<TF>&, Chemistry<TF>&, Input&);
+    Deposition(Master&, Grid<TF>&, Fields<TF>&, Radiation<TF>&, Input&);
+    //Deposition(Master&, Grid<TF>&, Fields<TF>&, Radiation<TF>&, Chemistry<TF>&, Input&);
     ~Deposition();
 
     void init(Input&);
@@ -79,7 +80,7 @@ private:
     Grid<TF>& grid;
     Fields<TF>& fields;
     Radiation<TF>& radiation; 
-    Chemistry<TF>& chemistry; 
+    //Chemistry<TF>& chemistry; 
 
     bool sw_deposition;
     bool use_depac;          // Switch to toggle between original and DEPAC models

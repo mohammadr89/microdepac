@@ -58,6 +58,8 @@ class Chemistry
         void exec(Thermo<TF>&,double,double);     ///< Add the tendencies belonging to the chemistry processes.
         void exec_stats(const int, const double, Stats<TF>&);   /// calculate statistics
         void exec_cross(Cross<TF>&, unsigned long);
+        // COMMENTED OUT: void calc_c20m(Boundary<TF>&);
+        // COMMENTED OUT: const std::vector<TF>& get_c_target() const { return c_target; }
 
     protected:
         // Cross sections
@@ -72,6 +74,8 @@ class Chemistry
 
         bool sw_chemistry;
         TF lifetime; // lifetime of species in seconds
+        // COMMENTED OUT: TF z_target;  // Target height for concentration calculation (from input)
+        // COMMENTED OUT: std::vector<TF> c_target;        // Target height concentration (optimal method)
 
         Field3d_operators<TF> field3d_operators;
 
@@ -109,7 +113,13 @@ class Chemistry
 
         const std::string tend_name = "chemistry";
         const std::string tend_longname = "Chemistry";
+
+        // COMMENTED OUT: New arrays for concentration scaling and fluxes
+        // COMMENTED OUT: std::vector<TF> cstar1;       // Scaled concentration parameter C*_1
+        // COMMENTED OUT: std::vector<TF> cstar2;       // Simple log formula concentration parameter C*_2  
+        
+        // COMMENTED OUT: ADD NEW ARRAYS FOR 20M CONCENTRATION CALCULATIONS:
+        // COMMENTED OUT: std::vector<TF> c20m_grid;   // Actual simulated concentration at closest grid point to 20m
+        // COMMENTED OUT: std::vector<TF> c_diff_flux;  // Difference flux calculation
 };
 #endif
-
-

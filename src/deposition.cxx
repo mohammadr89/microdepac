@@ -950,8 +950,10 @@ namespace
  */
 template<typename TF>
 Deposition<TF>::Deposition(Master& masterin, Grid<TF>& gridin, Fields<TF>& fieldsin, 
-    Radiation<TF>& radiationin, Chemistry<TF>& chemistryin, Input& inputin) :
-    master(masterin), grid(gridin), fields(fieldsin), radiation(radiationin), chemistry(chemistryin)
+        Radiation<TF>& radiationin, Input& inputin) :
+        //Radiation<TF>& radiationin, Chemistry<TF>& chemistryin, Input& inputin) :
+    master(masterin), grid(gridin), fields(fieldsin), radiation(radiationin)
+    //master(masterin), grid(gridin), fields(fieldsin), radiation(radiationin), chemistry(chemistryin)
 {
     sw_deposition = inputin.get_item<bool>("deposition", "swdeposition", "", false);
     use_depac = inputin.get_item<bool>("deposition", "use_depac", "", true);  // Default to DEPAC
