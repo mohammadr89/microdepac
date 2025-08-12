@@ -452,7 +452,8 @@ namespace {
                                         hlaw,
                                         react,
                                         &status,
-                                        c_ave_prev_nh3 * c_ug,
+                                        //c_ave_prev_nh3 * c_ug,
+                                        c_ave_prev_nh3,
                                         ra[ij],
                                         rb,
                                         nh3_ugm3,
@@ -567,7 +568,8 @@ namespace {
                                         hlaw,
                                         react,
                                         &status,
-                                        c_ave_prev_nh3 * c_ug,
+                                        // c_ave_prev_nh3 * c_ug,
+                                        c_ave_prev_nh3,
                                         ra[ij],
                                         rb,
                                         nh3_ugm3,
@@ -684,7 +686,8 @@ namespace {
                                             hlaw,
                                             react,
                                             &status,
-                                            c_ave_prev_nh3 * c_ug,
+                                            //c_ave_prev_nh3 * c_ug,
+                                            c_ave_prev_nh3,
                                             ra[ij],
                                             rb,
                                             nh3_ugm3,
@@ -740,7 +743,8 @@ namespace {
                                             hlaw,
                                             react,
                                             &status,
-                                            c_ave_prev_nh3 * c_ug,
+                                            //c_ave_prev_nh3 * c_ug,
+                                            c_ave_prev_nh3,
                                             ra[ij],
                                             rb,
                                             nh3_ugm3,
@@ -942,7 +946,8 @@ Deposition<TF>::Deposition(Master& masterin, Grid<TF>& gridin, Fields<TF>& field
     iratns = inputin.get_item<int>("deposition", "iratns", ""); 
     hlaw = inputin.get_item<TF>("deposition", "hlaw", "");     
     react = inputin.get_item<TF>("deposition", "react", "");                 // Reactivity factor
-    c_ave_prev_nh3 = inputin.get_item<TF>("deposition", "c_ave_prev_nh3", ""); // Previous NH3 concentration (mol/mol, then it converts to ug/m3)
+    //c_ave_prev_nh3 = inputin.get_item<TF>("deposition", "c_ave_prev_nh3", ""); // Previous NH3 concentration (mol/mol, then it converts to ug/m3)
+    c_ave_prev_nh3 = inputin.get_item<TF>("deposition", "c_ave_prev_nh3", ""); // Previous NH3 concentration (ug/m3)
     pressure = inputin.get_item<TF>("thermo", "pbot", "");  // Get pressure from thermo settings
     sw_override_ccomp = inputin.get_item<bool>("deposition", "sw_override_ccomp", "", false);
     ccomp_override_value = inputin.get_item<TF>("deposition", "ccomp_override_value", "", TF(0.0));
