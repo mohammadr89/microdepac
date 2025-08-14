@@ -101,6 +101,7 @@ class Boundary_surface_lsm : public Boundary<TF>
         using Boundary<TF>::sbc;
 
         void get_tiled_mean(std::vector<TF>&, std::string, TF);
+        TF get_effective_reference_height(const int ij) const;  // utility function for adaptive z_ref
 
         bool sw_constant_z0;
         bool sw_homogeneous;
@@ -109,6 +110,13 @@ class Boundary_surface_lsm : public Boundary<TF>
         bool sw_tile_stats;
         bool sw_tile_stats_col;
         bool sw_homogenize_sfc;
+
+        // Adaptive reference height configuration
+        bool sw_adaptive_z_ref;        // Enable/disable adaptive reference height selection
+        bool sw_prescribed_z_ref;      // Use prescribed vs calculated reference height  
+        TF z_ref_prescribed;           // User-specified reference height value [m]
+        TF z_ref_factor;               // Multiplier for z0m to calculate reference height [-]
+        TF z_ref_tolerance;            // Grid search tolerance (fraction of local grid spacing) [-]
 
         TF emis_sfc;
 
@@ -128,6 +136,9 @@ class Boundary_surface_lsm : public Boundary<TF>
         std::vector<TF> dudz_mo;
         std::vector<TF> dvdz_mo;
         std::vector<TF> dbdz_mo;
+
+        // Diagnostic field for reference height
+        std::vector<TF> z_ref_field;   // Actual reference height used at each grid point [m]
 
         // Lookup tables van Genuchten parameterisation
         std::shared_ptr<Netcdf_file> nc_lookup_table;
