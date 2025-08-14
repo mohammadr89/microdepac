@@ -41,6 +41,53 @@ namespace Land_surface_kernels
     namespace fm = Fast_math;
 
     template<typename TF>
+    int find_reference_level(
+            const TF* const restrict z_levels,
+            const TF z0m_val,
+            const TF z_ref_factor,
+            const TF z_ref_tolerance,
+            const bool sw_prescribed_z_ref,
+            const TF z_ref_prescribed,
+            const int kstart,
+            const int kend)
+    {
+        // Calculate target height
+        const TF target_height = sw_prescribed_z_ref ? 
+                                z_ref_prescribed : 
+                                z_ref_factor * z0m_val;
+        
+        // Check if first level is already above target
+        if (z_levels[kstart] > target_height) {
+            return kstart;
+        }
+        
+        // Search for appropriate level
+        for (int k = kstart; k < kend; ++k) {
+            // Case 1: Exact match
+            if (z_levels[k] == target_height) {
+                return k;
+            }
+            
+            // Case 2: Level is below target, check tolerance
+            if (z_levels[k] < target_height) {
+                const TF local_grid_spacing = z_levels[k+1] - z_levels[k];
+                const TF distance_from_target = target_height - z_levels[k];
+                if (distance_from_target <= z_ref_tolerance * local_grid_spacing) {
+                    return k;  // Close enough below target
+                }
+            }
+            
+            // Case 3: Level is above target - use this as fallback
+            if (z_levels[k] > target_height) {
+                return k;  // First level above target
+            }
+        }
+        
+        // Safety fallback: return kstart if nothing found
+        return kstart;
+    }
+
+    template<typename TF>
     void init_tile(Surface_tile<TF>& tile, const int ijcells)
     {
         tile.fraction.resize(ijcells);
@@ -259,12 +306,46 @@ namespace Land_surface_kernels
             const float* const restrict zL_sl,
             const float* const restrict f_sl,
             const TF db_ref,
-            const TF zsl,
+            // const TF zsl,
+            const TF* const restrict z_levels,        // NEW: grid height array
+            const bool sw_adaptive_z_ref,             // NEW: adaptive switch
+            const bool sw_prescribed_z_ref,          // NEW: prescribed switch  
+            const TF z_ref_prescribed,               // NEW: prescribed value
+            const TF z_ref_factor,                   // NEW: z0m multiplier
+            const TF z_ref_tolerance,                // NEW: tolerance
+            TF* const restrict z_ref_field,          // NEW: diagnostic output
             const int istart, const int iend,
             const int jstart, const int jend,
-            const int kstart,
+            //const int kstart,
+            const int kstart, const int kend,        // NEW: kend for height search
             const int icells, const int jcells,
             const int ijcells)
+    // {
+    //     const int ii = 1;
+    //     const int jj = icells;
+    //     const int kk = ijcells;
+
+    //     for (int j=0; j<jcells; ++j)
+    //         #pragma ivdep
+    //         for (int i=0; i<icells; ++i)
+    //         {
+    //             const int ij  = i + j*jj;
+    //             const int ijk = i + j*jj + kstart*kk;
+    //             const TF db = b[ijk] - bbot[ij] + db_ref;
+
+    //             if (sw_constant_z0)
+    //                 obuk[ij] = bsk::calc_obuk_noslip_dirichlet_lookup(
+    //                         zL_sl, f_sl, nobuk[ij], dutot[ij], db, zsl);
+    //             else
+    //                 obuk[ij] = bsk::calc_obuk_noslip_dirichlet_iterative(
+    //                         obuk[ij], dutot[ij], db, zsl, z0m[ij], z0h[ij]);
+
+    //             ustar[ij] = dutot[ij] * most::fm(zsl, z0m[ij], obuk[ij]);
+    //             bfluxbot[ij] = -ustar[ij] * db * most::fh(zsl, z0h[ij], obuk[ij]);
+    //             ra[ij]  = TF(1) / (ustar[ij] * most::fh(zsl, z0h[ij], obuk[ij]));
+    //         }
+    // }
+
     {
         const int ii = 1;
         const int jj = icells;
@@ -276,18 +357,42 @@ namespace Land_surface_kernels
             {
                 const int ij  = i + j*jj;
                 const int ijk = i + j*jj + kstart*kk;
-                const TF db = b[ijk] - bbot[ij] + db_ref;
+                
+                // Calculate reference height and level
+                TF z_ref;
+                int z_ref_level;
+                
+                if (sw_adaptive_z_ref)
+                {
+                    z_ref_level = find_reference_level(
+                        z_levels, z0m[ij], z_ref_factor, z_ref_tolerance,
+                        sw_prescribed_z_ref, z_ref_prescribed, kstart, kend);
+                    z_ref = z_levels[z_ref_level];
+                }
+                else
+                {
+                    z_ref_level = kstart;
+                    z_ref = z_levels[kstart];  // Traditional behavior
+                }
+                
+                // Store diagnostic reference height
+                z_ref_field[ij] = z_ref;
+                
+                // Calculate atmospheric values at reference level
+                const int ijk_ref = i + j*jj + z_ref_level*kk;
+                const TF db = b[ijk_ref] - bbot[ij] + db_ref;
 
+                // Calculate stability with reference height
                 if (sw_constant_z0)
                     obuk[ij] = bsk::calc_obuk_noslip_dirichlet_lookup(
-                            zL_sl, f_sl, nobuk[ij], dutot[ij], db, zsl);
+                            zL_sl, f_sl, nobuk[ij], dutot[ij], db, z_ref);
                 else
                     obuk[ij] = bsk::calc_obuk_noslip_dirichlet_iterative(
-                            obuk[ij], dutot[ij], db, zsl, z0m[ij], z0h[ij]);
+                            obuk[ij], dutot[ij], db, z_ref, z0m[ij], z0h[ij]);
 
-                ustar[ij] = dutot[ij] * most::fm(zsl, z0m[ij], obuk[ij]);
-                bfluxbot[ij] = -ustar[ij] * db * most::fh(zsl, z0h[ij], obuk[ij]);
-                ra[ij]  = TF(1) / (ustar[ij] * most::fh(zsl, z0h[ij], obuk[ij]));
+                ustar[ij] = dutot[ij] * most::fm(z_ref, z0m[ij], obuk[ij]);
+                bfluxbot[ij] = -ustar[ij] * db * most::fh(z_ref, z0h[ij], obuk[ij]);
+                ra[ij]  = TF(1) / (ustar[ij] * most::fh(z_ref, z0h[ij], obuk[ij]));
             }
     }
 
