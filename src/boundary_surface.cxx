@@ -840,6 +840,10 @@ void Boundary_surface<TF>::exec(
 {
     auto& gd = grid.get_grid_data();
 
+    // Create reference height field for compatibility with adaptive interface
+    std::vector<TF> z_ref_field(gd.ijcells);
+    std::fill(z_ref_field.begin(), z_ref_field.end(), gd.z[gd.kstart]);
+
     // Update roughness lengths when Charnock relation is used,
     // using friction velocity from previous time step (?).
     if (sw_charnock)
@@ -966,7 +970,8 @@ void Boundary_surface<TF>::exec(
             fields.mp.at("u")->flux_bot.data(),
             fields.mp.at("v")->flux_bot.data(),
             ustar.data(), obuk.data(), z0m.data(),
-            gd.z[gd.kstart],
+            // gd.z[gd.kstart],
+            z_ref_field.data(),              // NEW: use adaptive reference heights
             gd.istart, gd.iend,
             gd.jstart, gd.jend,
             gd.kstart,
@@ -980,7 +985,8 @@ void Boundary_surface<TF>::exec(
         bsk::calc_dbdz_mo(
                 dbdz_mo.data(), buoy->flux_bot.data(),
                 ustar.data(), obuk.data(),
-                gd.z[gd.kstart],
+                // gd.z[gd.kstart],
+                z_ref_field.data(),              // NEW: use adaptive reference heights
                 gd.istart, gd.iend,
                 gd.jstart, gd.jend,
                 gd.icells);
