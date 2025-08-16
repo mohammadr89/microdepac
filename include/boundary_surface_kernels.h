@@ -183,6 +183,60 @@ namespace Boundary_surface_kernels
     }
 
     template<typename TF>
+    void calc_dutot_adaptive(
+            TF* const restrict dutot,
+            const TF* const restrict u,
+            const TF* const restrict v,
+            const TF* const restrict ubot,
+            const TF* const restrict vbot,
+            const TF* const restrict z_ref_level_field,  // Grid level indices as TF
+            const int istart, const int iend,
+            const int jstart, const int jend,
+            const int kstart,
+            const int icells, const int jcells, const int ijcells,
+            Boundary_cyclic<TF>& boundary_cyclic)
+    {
+        const int ii = 1;
+        const int ii2 = 2;
+        const int jj = icells;
+        const int jj2 = 2*icells;
+    
+        // Calculate total wind using adaptive reference levels
+        const TF minval = 1.e-1;
+    
+        for (int j=jstart; j<jend; ++j)
+            #pragma ivdep
+            for (int i=istart; i<iend; ++i)
+            {
+                const int ij  = i + j*icells;
+                
+                // Get the reference level for this grid point
+                const int k_ref = static_cast<int>(z_ref_level_field[ij]);
+                const int ijk = i + j*icells + k_ref*ijcells;
+    
+                // Apply spatial filtering using reference level
+                const TF u_filtered = TF(1./9) *
+                    ( TF(0.5)*u[ijk-ii-jj] + u[ijk-jj] + u[ijk+ii-jj] + TF(0.5)*u[ijk+ii2-jj]
+                    + TF(0.5)*u[ijk-ii   ] + u[ijk   ] + u[ijk+ii   ] + TF(0.5)*u[ijk+ii2   ]
+                    + TF(0.5)*u[ijk-ii+jj] + u[ijk+jj] + u[ijk+ii+jj] + TF(0.5)*u[ijk+ii2+jj] );
+    
+                const TF v_filtered = TF(1./9) *
+                    ( TF(0.5)*v[ijk-ii-jj] + v[ijk-ii] + v[ijk-ii+jj] + TF(0.5)*v[ijk-ii+jj2]
+                    + TF(0.5)*v[ijk   -jj] + v[ijk   ] + v[ijk   +jj] + TF(0.5)*v[ijk   +jj2]
+                    + TF(0.5)*v[ijk+ii-jj] + v[ijk+ii] + v[ijk+ii+jj] + TF(0.5)*v[ijk+ii+jj2] );
+    
+                // Calculate wind speed difference using surface values
+                const TF du2 = fm::pow2(u_filtered - TF(0.5)*(ubot[ij] + ubot[ij+ii]))
+                             + fm::pow2(v_filtered - TF(0.5)*(vbot[ij] + vbot[ij+jj]));
+    
+                // Apply minimum threshold
+                dutot[ij] = std::max(std::pow(du2, TF(0.5)), minval);
+            }
+    
+        boundary_cyclic.exec_2d(dutot);
+    }
+
+    template<typename TF>
     void calc_duvdz_mo(
             TF* const restrict dudz,
             TF* const restrict dvdz,

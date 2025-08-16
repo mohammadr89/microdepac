@@ -111,6 +111,9 @@ class Boundary_surface_lsm : public Boundary<TF>
         bool sw_tile_stats_col;
         bool sw_homogenize_sfc;
 
+        void precalc_reference_levels(TF* const restrict z_ref_level_field);
+        std::vector<int> z_ref_level_field;   // Grid level indices for adaptive reference heights
+
         // Adaptive reference height configuration
         bool sw_adaptive_z_ref;        // Enable/disable adaptive reference height selection
         bool sw_prescribed_z_ref;      // Use prescribed vs calculated reference height  
