@@ -195,7 +195,8 @@ namespace Boundary_surface_kernels
             const TF* const restrict ustar,
             const TF* const restrict obuk,
             const TF* const restrict z0m,
-            const TF zsl,
+            // const TF zsl,
+            const TF* const restrict z_ref_field,    // Changed from scalar zsl
             const int istart, const int iend,
             const int jstart, const int jend,
             const int kstart,
@@ -210,6 +211,8 @@ namespace Boundary_surface_kernels
             {
                 const int ij  = i + j*icells;
                 const int ijk = ij + kstart*ijcells;
+
+                const TF zsl = z_ref_field[ij];  // Use local reference height for this grid point
 
                 const TF du_c = TF(0.5)*((u[ijk] - ubot[ij]) + (u[ijk+ii] - ubot[ij+ii]));
                 const TF dv_c = TF(0.5)*((v[ijk] - vbot[ij]) + (v[ijk+jj] - vbot[ij+jj]));
@@ -228,7 +231,8 @@ namespace Boundary_surface_kernels
             const TF* const restrict bfluxbot,
             const TF* const restrict ustar,
             const TF* const restrict obuk,
-            const TF zsl,
+            // const TF zsl,
+            const TF* const restrict z_ref_field,    // Changed from scalar zsl
             const int istart, const int iend,
             const int jstart, const int jend,
             const int icells)
@@ -238,6 +242,7 @@ namespace Boundary_surface_kernels
             for (int i=istart; i<iend; ++i)
             {
                 const int ij  = i + j*icells;
+                const TF zsl = z_ref_field[ij];  // Use local reference height for this grid point
                 dbdz[ij] = -bfluxbot[ij] / (Constants::kappa<TF> * zsl * ustar[ij]) * most::phih(zsl/obuk[ij]);
             }
     }

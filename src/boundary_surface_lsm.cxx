@@ -92,12 +92,32 @@ namespace
             }
     }
 
+    // template<typename TF>
+    // void calc_bulk_obuk(
+    //         TF* const restrict obuk,
+    //         const TF* const restrict bfluxbot,
+    //         const TF* const restrict ustar,
+    //         const TF zsl,
+    //         const int istart, const int iend,
+    //         const int jstart, const int jend,
+    //         const int icells)
+    // {
+    //     for (int j=jstart; j<jend; ++j)
+    //         #pragma ivdep
+    //         for (int i=istart; i<iend; ++i)
+    //         {
+    //             const int ij  = i + j*icells;
+    //             obuk[ij] = -fm::pow3(ustar[ij]) / (Constants::kappa<TF> * bfluxbot[ij]);
+    //             obuk[ij] = zsl/std::min(std::max(zsl/obuk[ij], Constants::zL_min<TF>), Constants::zL_max<TF>);
+    //         }
+    // }
+
     template<typename TF>
-    void calc_bulk_obuk(
+    void calc_bulk_obuk_adaptive(
             TF* const restrict obuk,
             const TF* const restrict bfluxbot,
             const TF* const restrict ustar,
-            const TF zsl,
+            const TF* const restrict z_ref_field,    // NEW: spatially varying z_ref
             const int istart, const int iend,
             const int jstart, const int jend,
             const int icells)
@@ -107,8 +127,9 @@ namespace
             for (int i=istart; i<iend; ++i)
             {
                 const int ij  = i + j*icells;
+                const TF z_ref = z_ref_field[ij];  // Use local reference height
                 obuk[ij] = -fm::pow3(ustar[ij]) / (Constants::kappa<TF> * bfluxbot[ij]);
-                obuk[ij] = zsl/std::min(std::max(zsl/obuk[ij], Constants::zL_min<TF>), Constants::zL_max<TF>);
+                obuk[ij] = z_ref/std::min(std::max(z_ref/obuk[ij], Constants::zL_min<TF>), Constants::zL_max<TF>);
             }
     }
 
@@ -124,7 +145,8 @@ namespace
             const TF* const restrict v,
             const TF* const restrict vbot,
             const TF* const restrict z0m,
-            const TF zsl,
+            // const TF zsl,
+            const TF* const restrict z_ref_field,    // NEW: adaptive reference heights
             const int istart, const int iend,
             const int jstart, const int jend,
             const int kstart,
@@ -171,41 +193,76 @@ namespace
                 const int ij  = i + j*jj;
                 const int ijk = i + j*jj + kstart*ijcells;
 
-                // Use the linearly interpolated grad, rather than the MO grad,
-                // to prevent giving unresolvable gradients to advection schemes
-                ugradbot[ij] = (u[ijk]-ubot[ij])/zsl;
-                vgradbot[ij] = (v[ijk]-vbot[ij])/zsl;
+                // // Use the linearly interpolated grad, rather than the MO grad,
+                // // to prevent giving unresolvable gradients to advection schemes
+                // ugradbot[ij] = (u[ijk]-ubot[ij])/zsl;
+                // vgradbot[ij] = (v[ijk]-vbot[ij])/zsl;
+
+                // Use adaptive reference height for each grid point
+                const TF z_ref = z_ref_field[ij];
+                ugradbot[ij] = (u[ijk]-ubot[ij])/z_ref;
+                vgradbot[ij] = (v[ijk]-vbot[ij])/z_ref;
+
             }
     }
 
+    // template<typename TF>
+    // void set_bcs_thl_qt(
+    //         TF* const restrict thl_gradbot,
+    //         TF* const restrict qt_gradbot,
+    //         const TF* const restrict thl,
+    //         const TF* const restrict qt,
+    //         const TF* const restrict thl_bot,
+    //         const TF* const restrict qt_bot,
+    //         const TF zsl, const int kstart,
+    //         const int icells, const int jcells,
+    //         const int ijcells)
+    // {
+    //     for (int j=0; j<jcells; ++j)
+    //         #pragma ivdep
+    //         for (int i=0; i<icells; ++i)
+    //         {
+    //             const int ij  = i + j*icells;
+    //             const int ijk = i + j*icells + kstart*ijcells;
+
+    //             // Use the linearly interpolated grad, rather than the MO grad,
+    //             // to prevent giving unresolvable gradients to advection schemes
+    //             thl_gradbot[ij] = (thl[ijk]-thl_bot[ij])/zsl;
+    //             qt_gradbot[ij]  = (qt [ijk]-qt_bot [ij])/zsl;
+    //         }
+    // }
+
     template<typename TF>
-    void set_bcs_thl_qt(
+    void set_bcs_thl_qt_adaptive(
             TF* const restrict thl_gradbot,
             TF* const restrict qt_gradbot,
             const TF* const restrict thl,
             const TF* const restrict qt,
             const TF* const restrict thl_bot,
             const TF* const restrict qt_bot,
-            const TF zsl, const int kstart,
+            const TF* const restrict z_ref_field,    // NEW: adaptive reference heights
+            const int kstart,
             const int icells, const int jcells,
             const int ijcells)
     {
-        for (int j=0; j<jcells; ++j)
-            #pragma ivdep
-            for (int i=0; i<icells; ++i)
-            {
-                const int ij  = i + j*icells;
-                const int ijk = i + j*icells + kstart*ijcells;
-
-                // Use the linearly interpolated grad, rather than the MO grad,
-                // to prevent giving unresolvable gradients to advection schemes
-                thl_gradbot[ij] = (thl[ijk]-thl_bot[ij])/zsl;
-                qt_gradbot[ij]  = (qt [ijk]-qt_bot [ij])/zsl;
-            }
+    for (int j=0; j<jcells; ++j)
+        #pragma ivdep
+        for (int i=0; i<icells; ++i)
+        {
+            const int ij  = i + j*icells;
+            const int ijk = i + j*icells + kstart*ijcells;
+            
+            // Use adaptive reference height for each grid point
+            const TF z_ref = z_ref_field[ij];
+            
+            thl_gradbot[ij] = (thl[ijk]-thl_bot[ij])/z_ref;
+            qt_gradbot[ij]  = (qt [ijk]-qt_bot [ij])/z_ref;
+        }
     }
 
     template<typename TF>
-    void set_bcs_scalars(
+    // void set_bcs_scalars(
+    void set_bcs_scalars_adaptive(
             TF* const restrict varbot,
             TF* const restrict vargradbot,
             TF* const restrict varfluxbot,
@@ -213,7 +270,9 @@ namespace
             const TF* const restrict obuk,
             const TF* const restrict var,
             const TF* const restrict z0h,
-            const TF zsl, const Boundary_type bcbot,
+            // const TF zsl, const Boundary_type bcbot,
+            const TF* const restrict z_ref_field,   // NEW: array parameter
+            const Boundary_type bcbot,
             const int istart, const int iend,
             const int jstart, const int jend, const int kstart,
             const int icells, const int jcells, const int kk,
@@ -230,6 +289,8 @@ namespace
                     const int ij  = i + j*jj;
                     const int ijk = i + j*jj + kstart*kk;
 
+                    const TF zsl = z_ref_field[ij];  // Extract local reference height
+
                     varfluxbot[ij] = -(var[ijk]-varbot[ij])*ustar[ij]*most::fh(zsl, z0h[ij], obuk[ij]);
                     vargradbot[ij] = (var[ijk]-varbot[ij])/zsl;
                 }
@@ -242,6 +303,8 @@ namespace
                 {
                     const int ij  = i + j*jj;
                     const int ijk = i + j*jj + kstart*kk;
+
+                    const TF zsl = z_ref_field[ij];
 
                     varbot[ij] = varfluxbot[ij] / (ustar[ij]*most::fh(zsl, z0h[ij], obuk[ij])) + var[ijk];
                     vargradbot[ij] = (var[ijk]-varbot[ij])/zsl;
@@ -272,6 +335,27 @@ Boundary_surface_lsm<TF>::Boundary_surface_lsm(
     // BvS: for now, read surface emission from radiation group. This needs
     // to be coupled correctly, also for 2D varying emissivities.
     emis_sfc = inputin.get_item<TF>("radiation", "emis_sfc", "");
+
+    // Read adaptive reference height configuration
+    sw_adaptive_z_ref    = inputin.get_item<bool>("boundary", "swadaptivezref", "", false);
+    sw_prescribed_z_ref  = inputin.get_item<bool>("boundary", "swprescribedzref", "", false);
+    z_ref_prescribed     = inputin.get_item<TF>("boundary", "zrefprescribed", "", TF(20.0));
+    z_ref_factor         = inputin.get_item<TF>("boundary", "zreffactor", "", TF(50.0));
+    z_ref_tolerance      = inputin.get_item<TF>("boundary", "zreftolerance", "", TF(0.5));
+    
+    // Validation checks
+    if (sw_adaptive_z_ref && sw_prescribed_z_ref && z_ref_prescribed <= TF(0))
+        throw std::runtime_error("zrefprescribed must be positive when swprescribedzref=true");
+    
+    if (sw_adaptive_z_ref && !sw_prescribed_z_ref && z_ref_factor <= TF(0))
+        throw std::runtime_error("zreffactor must be positive when swadaptivezref=true");
+    
+    if (sw_adaptive_z_ref && (z_ref_tolerance <= TF(0) || z_ref_tolerance > TF(1.0)))
+        throw std::runtime_error("zreftolerance must be between 0 and 1");
+    
+    // Consistency check
+    if (!sw_adaptive_z_ref && sw_prescribed_z_ref)
+        throw std::runtime_error("swprescribedzref=true requires swadaptivezref=true");
 
     // Create prognostic 2D and 3D fields;
     fields.init_prognostic_soil_field("t", "Soil temperature", "K");
@@ -494,10 +578,18 @@ void Boundary_surface_lsm<TF>::exec(
                     zL_sl.data(),
                     f_sl.data(),
                     db_ref,
-                    gd.z[gd.kstart],
+                    // gd.z[gd.kstart],
+                    gd.z.data(),                    // NEW
+                    sw_adaptive_z_ref,              // NEW
+                    sw_prescribed_z_ref,            // NEW
+                    z_ref_prescribed,               // NEW
+                    z_ref_factor,                   // NEW
+                    z_ref_tolerance,                // NEW
+                    z_ref_field.data(),             // NEW
                     gd.istart, gd.iend,
                     gd.jstart, gd.jend,
-                    gd.kstart,
+                    // gd.kstart,
+                    gd.kstart, gd.kend,             // NEW
                     gd.icells, gd.jcells,
                     gd.ijcells);
         else
@@ -514,10 +606,18 @@ void Boundary_surface_lsm<TF>::exec(
                     zL_sl.data(),
                     f_sl.data(),
                     db_ref,
-                    gd.z[gd.kstart],
+                    //gd.z[gd.kstart],
+                    gd.z.data(),                    // NEW
+                    sw_adaptive_z_ref,              // NEW
+                    sw_prescribed_z_ref,            // NEW
+                    z_ref_prescribed,               // NEW
+                    z_ref_factor,                   // NEW
+                    z_ref_tolerance,                // NEW
+                    z_ref_field.data(),             // NEW
                     gd.istart, gd.iend,
                     gd.jstart, gd.jend,
-                    gd.kstart,
+                    //gd.kstart,
+                    gd.kstart, gd.kend,             // NEW
                     gd.icells, gd.jcells,
                     gd.ijcells);
 
@@ -558,6 +658,27 @@ void Boundary_surface_lsm<TF>::exec(
                 gd.icells, gd.ijcells,
                 use_cs_veg, tile.first);
 
+    }
+
+    // Debug output for adaptive reference heights
+    if (sw_adaptive_z_ref && master.get_mpiid() == 0) //if adaptive reference height is enabled AND we are in the master process (MPI rank 0)
+    {
+        const TF z0m_min = *std::min_element(z0m.begin(), z0m.begin() + gd.ijcells);
+        const TF z0m_max = *std::max_element(z0m.begin(), z0m.begin() + gd.ijcells);
+        const TF z_ref_min = *std::min_element(z_ref_field.begin(), z_ref_field.begin() + gd.ijcells);
+        const TF z_ref_max = *std::max_element(z_ref_field.begin(), z_ref_field.begin() + gd.ijcells);
+        
+        if (timeloop.get_iteration() % 100 == 0)  // Print every 100 iterations
+        {
+            std::cout << "z0m range: " << std::setprecision(4) << z0m_min << " to " << z0m_max << " m" << std::endl;
+            std::cout << "Adaptive z_ref range: " << z_ref_min << " to " << z_ref_max << " m" << std::endl;
+            
+            // For uniform z0m, warn if z_ref has unexpected range
+            if (std::abs(z0m_max - z0m_min) < 1e-10 && std::abs(z_ref_max - z_ref_min) > 1e-6)
+            {
+                std::cout << "WARNING: Uniform z0m but varying z_ref - check implementation!" << std::endl;
+            }
+        }
     }
 
     // Override grid point with water
@@ -616,12 +737,22 @@ void Boundary_surface_lsm<TF>::exec(
     boundary_cyclic.exec_2d(fields.sp.at("thl")->fld_bot.data());
     boundary_cyclic.exec_2d(fields.sp.at("qt") ->fld_bot.data());
 
-    // Calculate bulk Obukhov length.
-    calc_bulk_obuk(
+    // // Calculate bulk Obukhov length.
+    // calc_bulk_obuk(
+    //         obuk.data(),
+    //         buoy->flux_bot.data(),
+    //         ustar.data(),
+    //         gd.z[gd.kstart],
+    //         gd.istart, gd.iend,
+    //         gd.jstart, gd.jend,
+    //         gd.icells);
+
+    // Calculate bulk Obukhov length with adaptive reference height
+    calc_bulk_obuk_adaptive(
             obuk.data(),
             buoy->flux_bot.data(),
             ustar.data(),
-            gd.z[gd.kstart],
+            z_ref_field.data(),           // NEW: use adaptive reference heights
             gd.istart, gd.iend,
             gd.jstart, gd.jend,
             gd.icells);
@@ -640,33 +771,53 @@ void Boundary_surface_lsm<TF>::exec(
             fields.mp.at("u")->fld_bot.data(),
             fields.mp.at("v")->fld.data(),
             fields.mp.at("v")->fld_bot.data(),
-            z0m.data(), gd.z[gd.kstart],
+            // z0m.data(), gd.z[gd.kstart],
+            z0m.data(), 
+            z_ref_field.data(),           // NEW: adaptive reference heights
             gd.istart, gd.iend,
             gd.jstart, gd.jend, gd.kstart,
             gd.icells, gd.jcells, gd.ijcells,
             boundary_cyclic);
 
+    // // Set BCs (gradients) thl + qt
+    // set_bcs_thl_qt(
+    //         fields.sp.at("thl")->grad_bot.data(),
+    //         fields.sp.at("qt")->grad_bot.data(),
+    //         fields.sp.at("thl")->fld.data(),
+    //         fields.sp.at("qt")->fld.data(),
+    //         fields.sp.at("thl")->fld_bot.data(),
+    //         fields.sp.at("qt")->fld_bot.data(),
+    //         // gd.z[gd.kstart], gd.kstart,
+    //         z_ref_field.data(),           // NEW: adaptive reference heights
+    //         gd.kstart,
+    //         gd.icells, gd.jcells, gd.ijcells);
+
     // Set BCs (gradients) thl + qt
-    set_bcs_thl_qt(
+    set_bcs_thl_qt_adaptive(
             fields.sp.at("thl")->grad_bot.data(),
             fields.sp.at("qt")->grad_bot.data(),
             fields.sp.at("thl")->fld.data(),
             fields.sp.at("qt")->fld.data(),
             fields.sp.at("thl")->fld_bot.data(),
             fields.sp.at("qt")->fld_bot.data(),
-            gd.z[gd.kstart], gd.kstart,
+            // gd.z[gd.kstart], gd.kstart,
+            z_ref_field.data(),           // NEW: adaptive reference heights
+            gd.kstart,
             gd.icells, gd.jcells, gd.ijcells);
 
     // Set BCs other scalars
     for (auto& it : fields.sp)
         if (it.first != "thl" and it.first != "qt")
-            set_bcs_scalars(
+            // set_bcs_scalars(
+            set_bcs_scalars_adaptive(
                 it.second->fld_bot.data(),
                 it.second->grad_bot.data(),
                 it.second->flux_bot.data(),
                 ustar.data(), obuk.data(),
                 it.second->fld.data(), z0h.data(),
-                gd.z[gd.kstart], sbc.at(it.first).bcbot,
+                // gd.z[gd.kstart], sbc.at(it.first).bcbot,
+                z_ref_field.data(),           // NEW: adaptive reference heights
+                sbc.at(it.first).bcbot,
                 gd.istart, gd.iend,
                 gd.jstart, gd.jend, gd.kstart,
                 gd.icells, gd.jcells, gd.ijcells,
@@ -683,7 +834,8 @@ void Boundary_surface_lsm<TF>::exec(
             fields.mp.at("u")->flux_bot.data(),
             fields.mp.at("v")->flux_bot.data(),
             ustar.data(), obuk.data(), z0m.data(),
-            gd.z[gd.kstart],
+            // gd.z[gd.kstart],
+            z_ref_field.data(),              // NEW: use adaptive reference heights
             gd.istart, gd.iend,
             gd.jstart, gd.jend,
             gd.kstart,
@@ -692,7 +844,8 @@ void Boundary_surface_lsm<TF>::exec(
     bsk::calc_dbdz_mo(
             dbdz_mo.data(), buoy->flux_bot.data(),
             ustar.data(), obuk.data(),
-            gd.z[gd.kstart],
+            // gd.z[gd.kstart],
+            z_ref_field.data(),              // NEW: use adaptive reference heights
             gd.istart, gd.iend,
             gd.jstart, gd.jend,
             gd.icells);
@@ -1020,6 +1173,10 @@ void Boundary_surface_lsm<TF>::init_surface_layer(Input& input)
     // Also initialise ustar at small number, to prevent div/0
     // in calculation surface gradients during cold start.
     std::fill(ustar.begin(), ustar.end(), Constants::dsmall);
+
+    // Initialize diagnostic reference height field
+    z_ref_field.resize(gd.ijcells);
+    std::fill(z_ref_field.begin(), z_ref_field.end(), gd.z[gd.kstart]);
 }
 
 template<typename TF>
@@ -1269,6 +1426,10 @@ void Boundary_surface_lsm<TF>::create_stats(
         stats.add_time_series("ustar", "Surface friction velocity", "m s-1", group_name);
         stats.add_time_series("obuk", "Obukhov length", "m", group_name);
 
+        // NEW: Add reference height statistics
+        if (sw_adaptive_z_ref)
+            stats.add_time_series("z_ref", "Adaptive reference height", "m", group_name);
+
         // Land surface
         stats.add_time_series("wl", "Liquid water reservoir", "m", group_name);
 
@@ -1307,6 +1468,10 @@ void Boundary_surface_lsm<TF>::create_stats(
         column.add_time_series("ustar", "Surface friction velocity", "m s-1");
         column.add_time_series("obuk", "Obukhov length", "m");
 
+        // NEW: Add reference height to column output
+        if (sw_adaptive_z_ref)
+            column.add_time_series("z_ref", "Adaptive reference height", "m");
+
         column.add_time_series("wl", "Liquid water reservoir", "m");
 
         column.add_time_series("H", "Surface sensible heat flux", "W m-2");
@@ -1341,8 +1506,9 @@ void Boundary_surface_lsm<TF>::create_stats(
             "ustar", "obuk", "wl",
             "fraction_wet", "fraction_soil", "fraction_veg",
             "rs_veg", "rs_soil",
-            "ra_veg", "ra_soil", "ra_wet"
-            "ustar_wet","ustar_soil", "ustar_veg" };
+            "ra_veg", "ra_soil", "ra_wet",
+            "ustar_wet","ustar_soil", "ustar_veg",
+            "z_ref" };  // NEW: Add z_ref to cross-sections
         cross_list = cross.get_enabled_variables(allowed_crossvars);
     }
 }
@@ -1550,6 +1716,10 @@ void Boundary_surface_lsm<TF>::save(const int iotime, Thermo<TF>& thermo)
         save_2d_field(tile.second.qt_bot.data(),  "qt_bot_"  + tile.first);
     }
 
+    // Save adaptive reference height field for diagnostics
+    if (sw_adaptive_z_ref)
+        save_2d_field(z_ref_field.data(), "z_ref");
+
     // Check for any failures.
     master.sum(&nerror, 1);
     if (nerror)
@@ -1596,6 +1766,8 @@ void Boundary_surface_lsm<TF>::exec_cross(Cross<TF>& cross, unsigned long iotime
             cross.cross_plane(tiles.at("wet").ra.data(), no_offset, name, iotime);
         else if (name == "ra_veg")
             cross.cross_plane(tiles.at("veg").ra.data(), no_offset, name, iotime);
+        else if (name == "z_ref")
+            cross.cross_plane(z_ref_field.data(), no_offset, name, iotime);
     }
 
     fields.release_tmp(tmp1);
@@ -1611,6 +1783,10 @@ void Boundary_surface_lsm<TF>::exec_stats(Stats<TF>& stats)
     // Surface layer
     stats.calc_stats_2d("obuk", obuk, no_offset);
     stats.calc_stats_2d("ustar", ustar, no_offset);
+
+    // NEW: Calculate reference height statistics
+    if (sw_adaptive_z_ref)
+        stats.calc_stats_2d("z_ref", z_ref_field, no_offset);
 
     // Land-surface
     stats.calc_stats_2d("wl", fields.ap2d.at("wl")->fld, no_offset);
@@ -1832,6 +2008,26 @@ void Boundary_surface_lsm<TF>::get_tiled_mean(
             gd.icells);
 }
 
+template<typename TF>
+TF Boundary_surface_lsm<TF>::get_effective_reference_height(const int ij) const
+{
+    auto& gd = grid.get_grid_data();
+    
+    if (sw_adaptive_z_ref) {
+        if (sw_prescribed_z_ref) {
+            return z_ref_prescribed;
+        } else {
+            const TF target_height = z_ref_factor * z0m[ij];
+            const int z_ref_level = lsmk::find_reference_level(
+                gd.z.data(), z0m[ij], z_ref_factor, z_ref_tolerance,
+                sw_prescribed_z_ref, z_ref_prescribed, 
+                gd.kstart, gd.kend);
+            return gd.z[z_ref_level];
+        }
+    } else {
+        return gd.z[gd.kstart];
+    }
+}
 
 #ifdef FLOAT_SINGLE
 template class Boundary_surface_lsm<float>;
