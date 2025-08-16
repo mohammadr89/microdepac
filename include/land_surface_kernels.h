@@ -350,38 +350,22 @@ namespace Land_surface_kernels
         const int ii = 1;
         const int jj = icells;
         const int kk = ijcells;
-
+    
         for (int j=0; j<jcells; ++j)
             #pragma ivdep
             for (int i=0; i<icells; ++i)
             {
                 const int ij  = i + j*jj;
-                const int ijk = i + j*jj + kstart*kk;
                 
-                // Calculate reference height and level
-                TF z_ref;
-                int z_ref_level;
-                
-                if (sw_adaptive_z_ref)
-                {
-                    z_ref_level = find_reference_level(
-                        z_levels, z0m[ij], z_ref_factor, z_ref_tolerance,
-                        sw_prescribed_z_ref, z_ref_prescribed, kstart, kend);
-                    z_ref = z_levels[z_ref_level];
-                }
-                else
-                {
-                    z_ref_level = kstart;
-                    z_ref = z_levels[kstart];  // Traditional behavior
-                }
-                
-                // Store diagnostic reference height
-                z_ref_field[ij] = z_ref;
+                // Use pre-calculated reference height and level
+                const TF z_ref = z_ref_field[ij];
+                const int z_ref_level = static_cast<int>((z_ref - z_levels[kstart]) / 
+                                        (z_levels[kstart+1] - z_levels[kstart])) + kstart;
                 
                 // Calculate atmospheric values at reference level
                 const int ijk_ref = i + j*jj + z_ref_level*kk;
                 const TF db = b[ijk_ref] - bbot[ij] + db_ref;
-
+    
                 // Calculate stability with reference height
                 if (sw_constant_z0)
                     obuk[ij] = bsk::calc_obuk_noslip_dirichlet_lookup(
@@ -389,12 +373,13 @@ namespace Land_surface_kernels
                 else
                     obuk[ij] = bsk::calc_obuk_noslip_dirichlet_iterative(
                             obuk[ij], dutot[ij], db, z_ref, z0m[ij], z0h[ij]);
-
+    
                 ustar[ij] = dutot[ij] * most::fm(z_ref, z0m[ij], obuk[ij]);
                 bfluxbot[ij] = -ustar[ij] * db * most::fh(z_ref, z0h[ij], obuk[ij]);
                 ra[ij]  = TF(1) / (ustar[ij] * most::fh(z_ref, z0h[ij], obuk[ij]));
             }
     }
+
 
     template<typename TF>
     void calc_fluxes(

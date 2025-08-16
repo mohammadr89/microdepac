@@ -423,18 +423,39 @@ void Boundary_surface_lsm<TF>::exec(
     //
     auto dutot = fields.get_tmp_xy();
 
-    bsk::calc_dutot(
+    // Pre-calculate reference levels for physical consistency
+    auto z_ref_level_as_TF = fields.get_tmp_xy();
+    precalc_reference_levels((*z_ref_level_as_TF).data());
+
+    // Calculate dutot using adaptive reference levels for physical consistency
+    bsk::calc_dutot_adaptive(
             (*dutot).data(),
             fields.mp.at("u")->fld.data(),
             fields.mp.at("v")->fld.data(),
             fields.mp.at("u")->fld_bot.data(),
             fields.mp.at("v")->fld_bot.data(),
+            (*z_ref_level_as_TF).data(),
             gd.istart, gd.iend,
             gd.jstart, gd.jend,
             gd.kstart,
             gd.icells, gd.jcells,
             gd.ijcells,
             boundary_cyclic);
+
+    fields.release_tmp_xy(z_ref_level_as_TF);
+
+    // bsk::calc_dutot(
+    //         (*dutot).data(),
+    //         fields.mp.at("u")->fld.data(),
+    //         fields.mp.at("v")->fld.data(),
+    //         fields.mp.at("u")->fld_bot.data(),
+    //         fields.mp.at("v")->fld_bot.data(),
+    //         gd.istart, gd.iend,
+    //         gd.jstart, gd.jend,
+    //         gd.kstart,
+    //         gd.icells, gd.jcells,
+    //         gd.ijcells,
+    //         boundary_cyclic);
 
     //
     // Retrieve necessary data from other classes.
@@ -580,7 +601,8 @@ void Boundary_surface_lsm<TF>::exec(
                     db_ref,
                     // gd.z[gd.kstart],
                     gd.z.data(),                    // NEW
-                    sw_adaptive_z_ref,              // NEW
+                    //sw_adaptive_z_ref,              // NEW
+                    false,                          // CHANGED: disable adaptive calculation
                     sw_prescribed_z_ref,            // NEW
                     z_ref_prescribed,               // NEW
                     z_ref_factor,                   // NEW
@@ -608,7 +630,8 @@ void Boundary_surface_lsm<TF>::exec(
                     db_ref,
                     //gd.z[gd.kstart],
                     gd.z.data(),                    // NEW
-                    sw_adaptive_z_ref,              // NEW
+                    // sw_adaptive_z_ref,              // NEW
+                    false,                          // CHANGED: disable adaptive calculation
                     sw_prescribed_z_ref,            // NEW
                     z_ref_prescribed,               // NEW
                     z_ref_factor,                   // NEW
@@ -661,24 +684,22 @@ void Boundary_surface_lsm<TF>::exec(
     }
 
     // Debug output for adaptive reference heights
-    if (sw_adaptive_z_ref && master.get_mpiid() == 0) //if adaptive reference height is enabled AND we are in the master process (MPI rank 0)
+    if (master.get_mpiid() == 0)
+        std::cout << "DEBUG: Reached main debug location, iteration = " << timeloop.get_iteration() << std::endl;
+
+    if (sw_adaptive_z_ref && master.get_mpiid() == 0)
     {
-        const TF z0m_min = *std::min_element(z0m.begin(), z0m.begin() + gd.ijcells);
-        const TF z0m_max = *std::max_element(z0m.begin(), z0m.begin() + gd.ijcells);
-        const TF z_ref_min = *std::min_element(z_ref_field.begin(), z_ref_field.begin() + gd.ijcells);
-        const TF z_ref_max = *std::max_element(z_ref_field.begin(), z_ref_field.begin() + gd.ijcells);
-        
-        if (timeloop.get_iteration() % 100 == 0)  // Print every 100 iterations
-        {
-            std::cout << "z0m range: " << std::setprecision(4) << z0m_min << " to " << z0m_max << " m" << std::endl;
-            std::cout << "Adaptive z_ref range: " << z_ref_min << " to " << z_ref_max << " m" << std::endl;
-            
-            // For uniform z0m, warn if z_ref has unexpected range
-            if (std::abs(z0m_max - z0m_min) < 1e-10 && std::abs(z_ref_max - z_ref_min) > 1e-6)
-            {
-                std::cout << "WARNING: Uniform z0m but varying z_ref - check implementation!" << std::endl;
+        // Calculate min/max only over computational domain
+        TF z_ref_min = 1e10, z_ref_max = -1e10;
+        for (int j=gd.jstart; j<gd.jend; ++j)
+            for (int i=gd.istart; i<gd.iend; ++i) {
+                const int ij = i + j*gd.icells;
+                z_ref_min = std::min(z_ref_min, z_ref_field[ij]);
+                z_ref_max = std::max(z_ref_max, z_ref_field[ij]);
             }
-        }
+        
+        std::cout << "Adaptive z_ref range: " << z_ref_min << " to " << z_ref_max << " m" << std::endl;
+        std::cout << "Physical consistency: dutot and all scalars use same reference heights" << std::endl;
     }
 
     // Override grid point with water
@@ -1177,6 +1198,9 @@ void Boundary_surface_lsm<TF>::init_surface_layer(Input& input)
     // Initialize diagnostic reference height field
     z_ref_field.resize(gd.ijcells);
     std::fill(z_ref_field.begin(), z_ref_field.end(), gd.z[gd.kstart]);
+    // Initialize reference level field
+    z_ref_level_field.resize(gd.ijcells);
+    std::fill(z_ref_level_field.begin(), z_ref_level_field.end(), gd.kstart);
 }
 
 template<typename TF>
@@ -2027,6 +2051,41 @@ TF Boundary_surface_lsm<TF>::get_effective_reference_height(const int ij) const
     } else {
         return gd.z[gd.kstart];
     }
+}
+
+template<typename TF>
+void Boundary_surface_lsm<TF>::precalc_reference_levels(TF* const restrict z_ref_level_field_as_TF)
+{
+    auto& gd = grid.get_grid_data();
+    
+    for (int j=gd.jstart; j<gd.jend; ++j)
+        for (int i=gd.istart; i<gd.iend; ++i)
+        {
+            const int ij = i + j*gd.icells;
+            
+            // Calculate reference level for this grid point
+            int z_ref_level = gd.kstart;  // Default to first level
+            
+            if (sw_adaptive_z_ref) {
+                z_ref_level = lsmk::find_reference_level(
+                    gd.z.data(), z0m[ij], z_ref_factor, z_ref_tolerance,
+                    sw_prescribed_z_ref, z_ref_prescribed, gd.kstart, gd.kend);
+            }
+            
+            // Store both the level index and the height
+            z_ref_level_field[ij] = z_ref_level;
+            z_ref_field[ij] = gd.z[z_ref_level];
+            z_ref_level_field_as_TF[ij] = TF(z_ref_level);  // For passing to calc_dutot
+
+            // // In precalc_reference_levels(), add this debug code:
+            // if (sw_adaptive_z_ref && i == gd.istart && j == gd.jstart) {
+            //     std::cout << "Debug - Grid point (0,0):" << std::endl;
+            //     std::cout << "  z0m = " << z0m[ij] << std::endl;
+            //     std::cout << "  target_height = " << (sw_prescribed_z_ref ? z_ref_prescribed : z_ref_factor * z0m[ij]) << std::endl;
+            //     std::cout << "  z_ref_level = " << z_ref_level << std::endl;
+            //     std::cout << "  z_ref_height = " << gd.z[z_ref_level] << std::endl;
+            // }
+        }
 }
 
 #ifdef FLOAT_SINGLE
