@@ -60,6 +60,20 @@ class Boundary_surface_lsm : public Boundary<TF>
         void load(const int, Thermo<TF>&);
         void save(const int, Thermo<TF>&);
 
+        // add the getter methods to so chemistry can access the reference height information
+        const std::vector<TF>& get_z_ref_field() const { return z_ref_field; }
+        const std::vector<TF>& get_z_ref_level_field() const { 
+            // Convert int vector to TF vector for compatibility
+            static std::vector<TF> level_field_as_TF;
+            if (level_field_as_TF.size() != z_ref_level_field.size()) {
+                level_field_as_TF.resize(z_ref_level_field.size());
+                for (size_t i = 0; i < z_ref_level_field.size(); ++i) {
+                    level_field_as_TF[i] = static_cast<TF>(z_ref_level_field[i]);
+                }
+            }
+            return level_field_as_TF;
+        }
+
         #ifdef USECUDA
         // GPU functions and variables
         void prepare_device(Thermo<TF>&);

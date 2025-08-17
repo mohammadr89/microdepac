@@ -58,9 +58,9 @@ class Chemistry
         void exec(Thermo<TF>&, Boundary<TF>&, double, double);     ///< Add the tendencies belonging to the chemistry processes.
         void exec_stats(const int, const double, Stats<TF>&);   /// calculate statistics
         void exec_cross(Cross<TF>&, unsigned long);
-        void calc_c20m(Boundary<TF>&);
+        void calc_c_ref_grid(Boundary<TF>&, const TF* const z_ref_field, const TF* const z_ref_level_field);  ///< Calculate concentration at adaptive reference height
         
-        // ← Added Getter Methods:
+        // Getter Methods:
         const std::vector<TF>& get_c_target() const { return c_target; }
 
     protected:
@@ -73,10 +73,9 @@ class Chemistry
         Fields<TF>& fields;
         Radiation<TF>& radiation; // Add this line
 
-
         bool sw_chemistry;
         TF lifetime; // lifetime of species in seconds
-        TF z_target;  // Target height for concentration calculation (from input)
+        // REMOVED: TF z_target;  // Now uses adaptive reference heights from boundary layer
         std::vector<TF> c_target;        // Target height concentration (optimal method)
 
         Field3d_operators<TF> field3d_operators;
@@ -116,12 +115,11 @@ class Chemistry
         const std::string tend_name = "chemistry";
         const std::string tend_longname = "Chemistry";
 
-        // New arrays for concentration scaling and fluxes
-        std::vector<TF> cstar1;       // Scaled concentration parameter C*_1
-        std::vector<TF> cstar2;       // Simple log formula concentration parameter C*_2  
+        // Arrays for concentration scaling and fluxes
+        std::vector<TF> cstar;        // Concentration scaling parameter with stability correction
         
-        // ADD NEW ARRAYS FOR 20M CONCENTRATION CALCULATIONS:
-        std::vector<TF> c20m_grid;   // Actual simulated concentration at closest grid point to 20m
+        // Arrays for adaptive reference height concentration calculations:
+        std::vector<TF> c_ref_grid;   // Actual simulated concentration at closest grid point to adaptive reference height
         std::vector<TF> c_diff_flux;  // Difference flux calculation
 };
 #endif
