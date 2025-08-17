@@ -23,8 +23,9 @@
 #ifndef MONIN_OBUKHOV_H
 #define MONIN_OBUKHOV_H
 
-#include "fast_math.h"
 #include "constants.h"
+#include "fast_math.h"
+#include <cmath>
 
 namespace fm = Fast_math;
 

@@ -54,6 +54,29 @@ class Boundary_surface_bulk : public Boundary<TF>
         void load(const int, Thermo<TF>&);
         void save(const int, Thermo<TF>&);
 
+        // Getter methods for adaptive reference height compatibility
+        const std::vector<TF>& get_z_ref_field() const {
+            // For non-LSM classes, return uniform reference height field
+            static std::vector<TF> uniform_z_ref;
+            auto& gd = this->grid.get_grid_data();
+            if (uniform_z_ref.size() != static_cast<size_t>(gd.ijcells)) {
+                uniform_z_ref.resize(gd.ijcells);
+                std::fill(uniform_z_ref.begin(), uniform_z_ref.end(), gd.z[gd.kstart]);
+            }
+            return uniform_z_ref;
+        }
+        
+        const std::vector<TF>& get_z_ref_level_field() const {
+            // For non-LSM classes, return uniform grid level indices
+            static std::vector<TF> uniform_z_ref_level;
+            auto& gd = this->grid.get_grid_data();
+            if (uniform_z_ref_level.size() != static_cast<size_t>(gd.ijcells)) {
+                uniform_z_ref_level.resize(gd.ijcells);
+                std::fill(uniform_z_ref_level.begin(), uniform_z_ref_level.end(), static_cast<TF>(gd.kstart));
+            }
+            return uniform_z_ref_level;
+        }
+
         #ifdef USECUDA
         // GPU functions and variables
         void prepare_device(Thermo<TF>&);
@@ -111,7 +134,6 @@ class Boundary_surface_bulk : public Boundary<TF>
         // Transfer coefficients
         TF bulk_cm;
         std::map<std::string, TF> bulk_cs;
-
 
     protected:
         void update_slave_bcs();

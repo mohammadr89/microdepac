@@ -20,30 +20,31 @@
  * along with MicroHH.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-//#include <cstdio>
-#include <cstdio>
-#include <iostream>
-#include <sstream>
-#include <algorithm>
-#include <math.h>
-#include <iomanip>
-#include <utility>
-
-#include "master.h"
-#include "grid.h"
-#include "fields.h"
-#include "thermo.h"
-#include "stats.h"
-#include "netcdf_interface.h"
+#include "boundary.h"
+#include "boundary_surface.h"
+#include "boundary_surface_bulk.h"
+#include "boundary_surface_lsm.h"
 #include "chemistry.h"
 #include "constants.h"
-#include "timeloop.h"
-#include "deposition.h"
-#include "boundary.h"
 #include "cross.h"
-#include <vector> 
+#include "deposition.h"
+#include "fields.h"
+#include "grid.h"
+#include "master.h"
 #include "monin_obukhov.h"
-
+#include "netcdf_interface.h"
+#include "stats.h"
+#include "thermo.h"
+#include "timeloop.h"
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
+#include <iomanip>
+#include <iostream>
+#include <math.h>
+#include <sstream>
+#include <utility>
+#include <vector> 
 
 /**
  * Calculate general factor for any two heights
@@ -161,14 +162,13 @@ namespace
         TF* restrict flux_nh3, 
         TF* restrict flux_inst, 
         TF* restrict total_flux_nh3,
-        TF* restrict cstar1,  
-        TF* restrict cstar2,  
+        TF* restrict cstar,
         TF* restrict c_target, 
         TF& trfa,
         const TF dt,
         const TF sdt,
         const TF lifetime,
-        const TF z_target,
+        const TF* const restrict z_ref_field,  // ADD: adaptive reference heights
         const int istart, const int iend,
         const int jstart, const int jend,
         const int kstart, const int kend,
@@ -228,30 +228,21 @@ namespace
                         const TF L = obuk[ij];
                         
                         const TF gradient_factor = calc_factor(z_1, z_2, L);       // For calculating c* from gradient
-                        const TF neutral_factor = calc_factor(z_1, z_2, TF(1e30)); // For neutral atmosphere (no stability)
                         
-                        // Calculate cstar2 using simple logarithmic formula (no stability correction)
-                        if (std::abs(neutral_factor) > TF(1e-15))
-                        {
-                            cstar2[ij] = +1.0 * (c_2 - c_1) / neutral_factor;
-                        }
-                        else
-                        {
-                            cstar2[ij] = TF(0.0);  // Avoid division by zero
-                        }
-                        
-                        // Calculate cstar1 with stability correction
+                        // Calculate cstar with stability correction (remove cstar2)
                         if (std::abs(gradient_factor) > TF(1e-15))
                         {
-                            cstar1[ij] = +1.0 * (c_2 - c_1) / gradient_factor;
+                            cstar[ij] = +1.0 * (c_2 - c_1) / gradient_factor;
                         }
                         else
                         {
-                            cstar1[ij] = TF(0.0);  // Add this else clause for safety
+                            cstar[ij] = TF(0.0);
                         }
-    
-                        const TF scaling_factor = calc_factor(z_1, z_target, L);
-                        c_target[ij] = c_1 + cstar1[ij] * scaling_factor;
+                        
+                        // Use adaptive reference height for each grid point
+                        const TF local_z_ref = z_ref_field[ij];
+                        const TF scaling_factor = calc_factor(z_1, local_z_ref, L);
+                        c_target[ij] = c_1 + cstar[ij] * scaling_factor;
     
                         // Calculate and accumulate flux for this RK3 step
                         // Note: flux is accumulated (+=) and scaled by sdt
@@ -308,7 +299,6 @@ Chemistry<TF>::Chemistry(Master& masterin, Grid<TF>& gridin, Fields<TF>& fieldsi
     sw_chemistry = inputin.get_item<bool>("chemistry", "swchemistry", "", false);
     //lifetime     = inputin.get_item<TF>("chemistry", "lifetime", "", (TF)72000);  // seconds (20 hour default)
     lifetime     = inputin.get_item<TF>("chemistry", "lifetime", "", (TF)1e30);  // seconds
-    z_target = inputin.get_item<TF>("chemistry", "z_target", "");
 
     master.print_message("Lifetime of the tracer:  = %13.5e s \n", lifetime);
     if (!sw_chemistry)
@@ -380,11 +370,9 @@ void Chemistry<TF>::exec_stats(const int iteration, const double time, Stats<TF>
         
         stats.calc_stats_2d("total_flux_mol_ha", total_flux_mol_ha, no_offset);  // Total [mol ha⁻¹]
 
-
         // Calculate statistics for new variables
-        stats.calc_stats_2d("cstar1", cstar1, no_offset);
-        stats.calc_stats_2d("cstar2", cstar2, no_offset);
-        stats.calc_stats_2d("c20m_grid", c20m_grid, no_offset);
+        stats.calc_stats_2d("cstar", cstar, no_offset);
+        stats.calc_stats_2d("c_ref_grid", c_ref_grid, no_offset);
         stats.calc_stats_2d("c_target", c_target, no_offset);
         stats.calc_stats_2d("c_diff_flux", c_diff_flux, no_offset);
 
@@ -454,14 +442,11 @@ void Chemistry<TF>::init(Input& inputin)
     std::fill(total_flux_nh3.begin(), total_flux_nh3.end(), TF(0));
 
     // Initialize new arrays for concentration scaling with zeros
-    cstar1.resize(gd.ijcells);
-    std::fill(cstar1.begin(), cstar1.end(), TF(0));  // Initialize with zeros
-
-    cstar2.resize(gd.ijcells);
-    std::fill(cstar2.begin(), cstar2.end(), TF(0));  // Initialize with zeros
+    cstar.resize(gd.ijcells);
+    std::fill(cstar.begin(), cstar.end(), TF(0));
     
-    c20m_grid.resize(gd.ijcells);
-    std::fill(c20m_grid.begin(), c20m_grid.end(), TF(0));
+    c_ref_grid.resize(gd.ijcells);
+    std::fill(c_ref_grid.begin(), c_ref_grid.end(), TF(0));
 
     // Only one concentration array needed now (optimal method)
     c_target.resize(gd.ijcells);
@@ -628,11 +613,10 @@ void Chemistry<TF>::create(
         // used in chemistry:
         stats.add_time_series("vdnh3", "NH3 deposition velocity", "m s-1", group_named);
         //stats.add_time_series("flux_nh3", "NH3 surface flux", "mol(NH3) m-2 s-1", group_named);
-        stats.add_time_series("cstar1", "C*_1 concentration scaling parameter", "mol mol-1", group_named);
-        stats.add_time_series("cstar2", "C*_2 concentration scaling parameter", "mol mol-1", group_named);
-        stats.add_time_series("c20m_grid", "NH3 concentration at closest grid point to 20m", "mol mol-1", group_named);
-        stats.add_time_series("c_target", "NH3 concentration at target height (optimal)", "mol mol-1", group_named);
-        stats.add_time_series("c_diff_flux", "Concentration difference flux (c_target - c20m_grid) × 10^9 × rho × conversion", "kg m-2 s-1", group_named);
+        stats.add_time_series("cstar", "C* concentration scaling parameter with stability correction", "mol mol-1", group_named);
+        stats.add_time_series("c_ref_grid", "NH3 concentration at closest grid point to adaptive reference height", "mol mol-1", group_named);
+        stats.add_time_series("c_target", "NH3 concentration at adaptive reference height (optimal)", "mol mol-1", group_named);
+        stats.add_time_series("c_diff_flux", "Concentration difference flux (c_target - c_ref_grid) × 10^9 × rho × conversion", "kg m-2 s-1", group_named);
         stats.add_time_series("total_flux_mol_ha", "NH3 total cumulative flux", "mol ha-1", group_named);
     }
 
@@ -640,7 +624,7 @@ void Chemistry<TF>::create(
     if (cross.get_switch())
     {
         //std::vector<std::string> allowed_crossvars = {"vdnh3"};
-        std::vector<std::string> allowed_crossvars = {"vdnh3","flux_nh3","flux_inst","total_flux_mol_ha","cstar1","cstar2","c20m_grid","c_target","c_diff_flux"};
+        std::vector<std::string> allowed_crossvars = {"vdnh3","flux_nh3","flux_inst","total_flux_mol_ha","cstar","c_ref_grid","c_target","c_diff_flux"};
         cross_list = cross.get_enabled_variables(allowed_crossvars);
 
         // `deposition->create()` only creates cross-sections.
@@ -683,12 +667,10 @@ void Chemistry<TF>::exec_cross(Cross<TF>& cross, unsigned long iotime)
         }
         else if (name == "flux_inst")  //added for instantaneous deposition flux of NH3
             cross.cross_plane(flux_inst.data(), no_offset, name, iotime);
-        else if (name == "cstar1")
-            cross.cross_plane(cstar1.data(), no_offset, name, iotime);
-        else if (name == "cstar2")
-            cross.cross_plane(cstar2.data(), no_offset, name, iotime);
-        else if (name == "c20m_grid")
-            cross.cross_plane(c20m_grid.data(), no_offset, name, iotime);
+        else if (name == "cstar")
+            cross.cross_plane(cstar.data(), no_offset, name, iotime);
+        else if (name == "c_ref_grid")
+            cross.cross_plane(c_ref_grid.data(), no_offset, name, iotime);
         else if (name == "c_target")
             cross.cross_plane(c_target.data(), no_offset, name, iotime);
         else if (name == "c_diff_flux")
@@ -731,70 +713,32 @@ void Chemistry<TF>::update_time_dependent(Timeloop<TF>& timeloop, Boundary<TF>& 
 #ifndef USECUDA
 
 template<typename TF>
-void Chemistry<TF>::calc_c20m(Boundary<TF>& boundary)
+void Chemistry<TF>::calc_c_ref_grid(Boundary<TF>& boundary, const TF* const z_ref_field, const TF* const z_ref_level_field)
 {
     if (!sw_chemistry)
         return;
         
     auto& gd = grid.get_grid_data();
-    const TF target_height = z_target;
     
-    // Constants for flux calculation (same as in pss function)
-    const TF xmair = 28.9647;       // Molar mass of dry air  [kg kmol-1]
+    // Constants for flux calculation
+    const TF xmair = 28.9647;
     const TF xmair_i = TF(1) / xmair;
     const TF xmnh3 = 17.031;
-    const int k = gd.kstart;        // Surface level index
+    const int k = gd.kstart;
     
-    // Get Obukhov length
-    const auto& tiles = boundary.get_tiles();
-    std::vector<TF> obuk(gd.ijcells, TF(0));
-    
-    for (const auto& tile : tiles) {
-        const auto& tile_data = tile.second;
-        for (int ij = 0; ij < gd.ijcells; ++ij) {
-            obuk[ij] += tile_data.fraction[ij] * tile_data.obuk[ij];
-        }
-    }
-    
-    // Calculate concentrations using FIXED method (existing cstar1)
     for (int j = gd.jstart; j < gd.jend; ++j) {
         for (int i = gd.istart; i < gd.iend; ++i) {
             const int ij = i + j * gd.jstride;
-            // const int ijk1 = i + j * gd.jstride + gd.kstart * gd.ijcells;
-            const int ijk1 = i + j * gd.jstride + gd.kstart * gd.kstride;
+            
+            // Use pre-calculated grid level index (no search needed!)
+            const int k_ref = static_cast<int>(z_ref_level_field[ij]);
+            
+            // Get concentration at the exact reference level
+            const int ijk_ref = i + j * gd.jstride + k_ref * gd.kstride;
+            c_ref_grid[ij] = fields.sp.at("nh3")->fld[ijk_ref];
 
-            
-            // Get concentration at first grid level
-            const TF c_1 = fields.sp.at("nh3")->fld[ijk1];
-            
-            // Get heights
-            const TF z_1 = gd.z[gd.kstart];
-            
-            // Use pre-calculated cstar1 from pss function
-            const TF cstar_fixed = cstar1[ij];
-            
-            // Calculate scaling factor from z_1 to target height
-            const TF scaling_factor = calc_factor(z_1, target_height, obuk[ij]);
-            
-            // Calculate c20m_grid: Find closest grid point to target height
-            int k_closest = gd.kstart;
-            TF min_distance = std::abs(gd.z[gd.kstart] - target_height);
-            
-            for (int k_grid = gd.kstart; k_grid < gd.kend; ++k_grid) {
-                TF distance = std::abs(gd.z[k_grid] - target_height);
-                if (distance < min_distance) {
-                    min_distance = distance;
-                    k_closest = k_grid;
-                }
-            }
-            
-            // Get actual simulated concentration at closest grid point
-            //const int ijk_closest = i + j * gd.jstride + k_closest * gd.ijcells;
-            const int ijk_closest = i + j * gd.jstride + k_closest * gd.kstride;
-
-            c20m_grid[ij] = fields.sp.at("nh3")->fld[ijk_closest];
-
-            const TF concentration_diff = c_target[ij] - c20m_grid[ij];
+            // Calculate difference between scaled and grid concentrations
+            const TF concentration_diff = c_target[ij] - c_ref_grid[ij];
             c_diff_flux[ij] = concentration_diff * TF(1e9) * fields.rhoref[k] * xmair_i * xmnh3;
         }
     }
@@ -834,7 +778,29 @@ void Chemistry<TF>::exec(Thermo<TF>& thermo, Boundary<TF>& boundary, double sdt,
     }
 
 
-    // REMOVE ALL THE DUPLICATE DECLARATIONS AND LOOPS
+// Get adaptive reference heights from boundary layer
+// Cast to specific boundary type to access getter methods
+const std::vector<TF>* z_ref_field_ptr = nullptr;
+const std::vector<TF>* z_ref_level_field_ptr = nullptr;
+
+if (auto* lsm_boundary = dynamic_cast<Boundary_surface_lsm<TF>*>(&boundary)) {
+    z_ref_field_ptr = &(lsm_boundary->get_z_ref_field());
+    z_ref_level_field_ptr = &(lsm_boundary->get_z_ref_level_field());
+}
+else if (auto* surface_boundary = dynamic_cast<Boundary_surface<TF>*>(&boundary)) {
+    z_ref_field_ptr = &(surface_boundary->get_z_ref_field());
+    z_ref_level_field_ptr = &(surface_boundary->get_z_ref_level_field());
+}
+else if (auto* bulk_boundary = dynamic_cast<Boundary_surface_bulk<TF>*>(&boundary)) {
+    z_ref_field_ptr = &(bulk_boundary->get_z_ref_field());
+    z_ref_level_field_ptr = &(bulk_boundary->get_z_ref_level_field());
+}
+else {
+    throw std::runtime_error("Unknown boundary type in chemistry exec()");
+}
+
+const std::vector<TF>& z_ref_field = *z_ref_field_ptr;
+const std::vector<TF>& z_ref_level_field = *z_ref_level_field_ptr;
 
     pss<TF>(
             fields.st.at("nh3")->fld.data(),
@@ -846,26 +812,24 @@ void Chemistry<TF>::exec(Thermo<TF>& thermo, Boundary<TF>& boundary, double sdt,
             gd.dzi.data(),
             fields.rhoref.data(),
             gd.z.data(),                   
-            obuk.data(),                   // CHANGE TO obuk.data()
+            obuk.data(),
             z0m.data(),                    
             rfa.data(),
             flux_nh3.data(),
             flux_inst.data(),
             total_flux_nh3.data(), 
-            cstar1.data(),               
-            cstar2.data(),
+            cstar.data(),
             c_target.data(),
             trfa,
             dt, sdt, lifetime,
-            z_target,
+            z_ref_field.data(),
             gd.istart, gd.iend,
             gd.jstart, gd.jend,
             gd.kstart, gd.kend,
             gd.icells, gd.ijcells,
             gd.dx, gd.dy);
-
-    calc_c20m(boundary);
-
+    
+    calc_c_ref_grid(boundary, z_ref_field.data(), z_ref_level_field.data());
 
     fields.release_tmp(tmp);
 }
