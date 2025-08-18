@@ -221,7 +221,6 @@ class Boundary_surface_lsm : public Boundary<TF>
         int* nobuk_g;
 
         cuda_vector<TF> z0m_g;
-        cuda_vector<TF> z0h_g;
 
         TF* ustar_g;
         TF* obuk_g;
