@@ -117,11 +117,11 @@ namespace
     }
     
     /**
-     * APPROACH B: Use existing cstar1 with optimal reference
+     * APPROACH B: Use existing cstar with optimal reference
      */
     template<typename TF>
     TF calc_approach_B(
-        const TF cstar1_val,
+        const TF cstar_val,
         const TF* const nh3,
         const TF* const z,
         const TF z_target,
@@ -141,7 +141,7 @@ namespace
         // Calculate factor using general function
         const TF scaling_factor = calc_factor(z1, z_target, L);      // For scaling to target height
         
-        return c1 + cstar1_val * scaling_factor;
+        return c1 + cstar_val * scaling_factor;
     }
     
     template<typename TF>
@@ -155,9 +155,9 @@ namespace
         const TF* const restrict qprof,
         const TF* const restrict dzi,
         const TF* const restrict rhoref,
-        const TF* const restrict z,       // Add grid height levels
-        const TF* const restrict obuk,    // Add Obukhov length (from surface)
-        const TF* const restrict z0m,     // Add surface roughness length
+        const TF* const restrict z,       
+        const TF* const restrict obuk,    
+        const TF* const restrict z0m,     
         TF* restrict rfa,
         TF* restrict flux_nh3, 
         TF* restrict flux_inst, 
@@ -168,7 +168,7 @@ namespace
         const TF dt,
         const TF sdt,
         const TF lifetime,
-        const TF* const restrict z_ref_field,  // ADD: adaptive reference heights
+        const TF* const restrict z_ref_field,  
         const int istart, const int iend,
         const int jstart, const int jend,
         const int kstart, const int kend,
@@ -179,41 +179,39 @@ namespace
         const TF xmh2o = 18.015265;
         const TF xmnh3 = 17.031;
         const TF xmh2o_i = TF(1) / xmh2o;
-        const TF xmair = 28.9647;       // Molar mass of dry air  [kg kmol-1]
+        const TF xmair = 28.9647;       
         const TF xmair_i = TF(1) / xmair;
-        const TF Na = 6.02214086e23; // Avogadros number [molecules mol-1]
+        const TF Na = 6.02214086e23; 
     
-        // Update the time integration of the reaction fluxes with the full timestep on first RK3 step
-        //if (abs(sdt/dt - 1./3.) < 1e-5) trfa += dt;
         trfa += sdt;
     
-        // Import Monin_obukhov namespace for stability functions
         namespace most = Monin_obukhov;
+    
+        // Storage for multi-level surface calculations
+        const int max_surface_levels = 10; // Adjust as needed
+        std::vector<std::vector<TF>> surface_weights(iend * jend);
+        std::vector<TF> sum_weights((iend - istart) * (jend - jstart));
+        std::vector<int> k_ref_top_field((iend - istart) * (jend - jstart));
     
         for (int k=kstart; k<kend; ++k)
         {
-            const TF C_M = TF(1e-3) * rhoref[k] * Na * xmair_i;   // molecules/cm3 for chmistry!
-    
-            // From ppb (units mixing ratio) to molecules/cm3 --> changed: now mol/mol unit for transported tracers:
+            const TF C_M = TF(1e-3) * rhoref[k] * Na * xmair_i;   
             const TF CFACTOR = C_M;
             const TF sdt_cfac_i = TF(1) / (sdt * CFACTOR);
-            const TF lti = TF(1)/lifetime;  // 1/s
+            const TF lti = TF(1)/lifetime;  
             TF decay;
+            
             for (int j=jstart; j<jend; ++j)
             #pragma ivdep
                 for (int i=istart; i<iend; ++i)
                 {
                     const int ijk = i + j*jstride + k*kstride;
                     const int ij = i + j*jstride;
-    
-                    // kg/kg --> molH2O/molAir --*C_M--> molecules/cm3 limit to 1 molecule/cm3 to avoid error usr_HO2_HO2
-                    // const TF C_H2O = std::max(qt[ijk] * xmair * C_M * xmh2o_i, TF(1));
-                    // const TF TEMP = temp[ijk];
+                    const int local_ij = (i-istart) + (j-jstart)*(iend-istart);
     
                     if (k==kstart)
                     {
-                        // Add new concentration scaling calculations
-                        // Get concentrations at two vertical levels (kstart and kstart+1)
+                        // Get concentrations at two vertical levels
                         const int ijk1 = i + j*jstride + kstart*kstride;
                         const int ijk2 = i + j*jstride + (kstart+1)*kstride;
                         
@@ -227,9 +225,9 @@ namespace
                         // Obukhov length from surface
                         const TF L = obuk[ij];
                         
-                        const TF gradient_factor = calc_factor(z_1, z_2, L);       // For calculating c* from gradient
+                        const TF gradient_factor = calc_factor(z_1, z_2, L);       
                         
-                        // Calculate cstar with stability correction (remove cstar2)
+                        // Calculate cstar with stability correction
                         if (std::abs(gradient_factor) > TF(1e-15))
                         {
                             cstar[ij] = +1.0 * (c_2 - c_1) / gradient_factor;
@@ -239,54 +237,245 @@ namespace
                             cstar[ij] = TF(0.0);
                         }
                         
-                        // Use adaptive reference height for each grid point
+                        // Get reference height for this grid point
                         const TF local_z_ref = z_ref_field[ij];
-                        const TF scaling_factor = calc_factor(z_1, local_z_ref, L);
-                        c_target[ij] = c_1 + cstar[ij] * scaling_factor;
-    
-                        // Calculate and accumulate flux for this RK3 step
-                        // Note: flux is accumulated (+=) and scaled by sdt
-    
-                        // // Calculate instantaneous flux first (original method)
-                        // flux_inst[ij] = (-1.0) * vdnh3[ij] * nh3[ijk] * rhoref[k] * xmair_i * xmnh3; // [kg(NH3) m-2 s-1]
-                        flux_inst[ij] = (-1.0) * vdnh3[ij] * c_target[ij] * rhoref[k] * xmair_i * xmnh3; // [kg(NH3) m-2 s-1]
-    
-                        // accumulate over sub-timestep for statistics (gets reset periodically)
-                        TF flux = flux_inst[ij] * sdt; // [kg m⁻² s⁻¹] × [s] = [kg m⁻²] Scale by timestep for accumulation     
-                        flux_nh3[ij] += flux;        // For period statistics - Accumulate [kg m⁻²]
+                        const TF z_surface = z[kstart];
                         
-                        // accumulate total flux (never gets reset)
-                        total_flux_nh3[ij] += flux;  // [kg m⁻²]
-    
-                        // decay = vdnh3[ij]*dzi[k] + lti;   // 1/s
-                        if (std::abs(nh3[ijk]) > TF(1e-15)) //to prevent division by zero
+                        // Check if reference height is higher than first grid level
+                        if (local_z_ref > z_surface + TF(1e-6)) // Small tolerance for numerical precision
                         {
-                            decay = (vdnh3[ij] * dzi[k] * c_target[ij] / nh3[ijk]) + lti;   // 1/s
+                            // MULTI-LEVEL SURFACE APPROACH
+                            // Find levels in surface layer
+                            int k_ref_top = find_ref_below(z, local_z_ref, kstart, kend);
+                            k_ref_top_field[local_ij] = k_ref_top;
+                            
+                            // Calculate theoretical concentration at each level and sum
+                            surface_weights[local_ij].resize(k_ref_top - kstart + 1);
+                            TF sum_c_theoretical = TF(0);
+                            
+                            for (int k_layer = kstart; k_layer <= k_ref_top; ++k_layer)
+                            {
+                                const TF z_level = z[k_layer];
+                                const TF scaling_factor = calc_factor(z_surface, z_level, L);
+                                const TF c_theoretical = c_1 + cstar[ij] * scaling_factor;
+                                
+                                surface_weights[local_ij][k_layer - kstart] = c_theoretical;
+                                sum_c_theoretical += c_theoretical;
+                            }
+                            
+                            sum_weights[local_ij] = sum_c_theoretical;
+                            
+                            // Calculate c_target at reference height
+                            const TF scaling_factor = calc_factor(z_surface, local_z_ref, L);
+                            c_target[ij] = c_1 + cstar[ij] * scaling_factor;
+                            
+                            // Multi-level flux using c_target
+                            flux_inst[ij] = (-1.0) * vdnh3[ij] * c_target[ij] * rhoref[k] * xmair_i * xmnh3;
                         }
                         else
                         {
-                        decay = lti; // 1/s
+                            // ORIGINAL METHOD: z_ref ≈ z_surface
+                            k_ref_top_field[local_ij] = kstart;  // Only surface level
+                            
+                            // No c_target needed, use original DEPAC
+                            // Original DEPAC flux: F = -V_d × C_surface
+                            flux_inst[ij] = (-1.0) * vdnh3[ij] * nh3[ijk] * rhoref[k] * xmair_i * xmnh3;
+                        }
+    
+                        // accumulate over sub-timestep for statistics
+                        TF flux = flux_inst[ij] * sdt;      
+                        flux_nh3[ij] += flux;        
+                        
+                        // accumulate total flux (never gets reset)
+                        total_flux_nh3[ij] += flux;  
+                    }
+    
+                    // Determine decay rate based on surface layer definition
+                    const int k_ref_top = k_ref_top_field[local_ij];
+                    
+                    if (k <= k_ref_top)  // This level is in the surface layer
+                    {
+                        if (k_ref_top == kstart)
+                        {
+                            // ORIGINAL DEPAC METHOD: z_ref ≈ z_surface, no scaling needed
+                            // F = -V_d × C_surface
+                            decay = vdnh3[ij] * dzi[k] + lti;
+                        }
+                        else
+                        {
+                            // MULTI-LEVEL METHOD: distributed deposition with density correction
+                            if (std::abs(nh3[ijk]) > TF(1e-15)) // Prevent division by zero
+                            {
+                                const TF c_this_level = surface_weights[local_ij][k - kstart];
+                                const TF weight = c_this_level / sum_weights[local_ij];
+                                const TF c_distributed = c_target[ij] * weight;
+                                
+                                // Reference density correction: use surface density as reference
+                                const TF rho_ref = rhoref[kstart];
+                                const TF density_correction = rho_ref / rhoref[k];
+                                
+                                decay = (vdnh3[ij] * density_correction * dzi[k] * c_distributed / nh3[ijk]) + lti;
+                            }
+                            else
+                            {
+                                decay = lti;
+                            }
                         }
                     }
                     else
-                    { 
-                        decay = lti; // 1/s
+                    {
+                        decay = lti;  // Only chemical decay above surface layer
                     }
-
+    
                     // update tendencies:
                     tnh3[ijk] -= decay*nh3[ijk];
-    
-                    // Get statistics for reaction fluxes:
-                    //if (abs(sdt/dt - 1./3.) < 1e-5)
-                    //{
-                    //    for (int l=0; l<NREACT; ++l)
-                    //        rfa[(k-kstart)*NREACT+l] +=  RF[l]*dt;    // take the first evaluation in the RK3 steps, but with full time step.
-                    //}
-    
-                    //  Reculculate tendency and add to the tendency of the transported tracers:
                 } // i
         } // k
     }
+
+    // template<typename TF>
+    // void pss(
+    //     TF* restrict tnh3,
+    //     const TF* const restrict nh3,
+    //     const TF* const restrict jval,
+    //     const TF* const restrict emval,
+    //     const TF* const restrict vdnh3,
+    //     const TF* const restrict tprof,
+    //     const TF* const restrict qprof,
+    //     const TF* const restrict dzi,
+    //     const TF* const restrict rhoref,
+    //     const TF* const restrict z,       // Add grid height levels
+    //     const TF* const restrict obuk,    // Add Obukhov length (from surface)
+    //     const TF* const restrict z0m,     // Add surface roughness length
+    //     TF* restrict rfa,
+    //     TF* restrict flux_nh3, 
+    //     TF* restrict flux_inst, 
+    //     TF* restrict total_flux_nh3,
+    //     TF* restrict cstar,
+    //     TF* restrict c_target, 
+    //     TF& trfa,
+    //     const TF dt,
+    //     const TF sdt,
+    //     const TF lifetime,
+    //     const TF* const restrict z_ref_field,  // ADD: adaptive reference heights
+    //     const int istart, const int iend,
+    //     const int jstart, const int jend,
+    //     const int kstart, const int kend,
+    //     const int jstride, const int kstride,
+    //     const TF dx,
+    //     const TF dy)
+    // {
+    //     const TF xmh2o = 18.015265;
+    //     const TF xmnh3 = 17.031;
+    //     const TF xmh2o_i = TF(1) / xmh2o;
+    //     const TF xmair = 28.9647;       // Molar mass of dry air  [kg kmol-1]
+    //     const TF xmair_i = TF(1) / xmair;
+    //     const TF Na = 6.02214086e23; // Avogadros number [molecules mol-1]
+    // 
+    //     // Update the time integration of the reaction fluxes with the full timestep on first RK3 step
+    //     //if (abs(sdt/dt - 1./3.) < 1e-5) trfa += dt;
+    //     trfa += sdt;
+    // 
+    //     // Import Monin_obukhov namespace for stability functions
+    //     namespace most = Monin_obukhov;
+    // 
+    //     for (int k=kstart; k<kend; ++k)
+    //     {
+    //         const TF C_M = TF(1e-3) * rhoref[k] * Na * xmair_i;   // molecules/cm3 for chmistry!
+    // 
+    //         // From ppb (units mixing ratio) to molecules/cm3 --> changed: now mol/mol unit for transported tracers:
+    //         const TF CFACTOR = C_M;
+    //         const TF sdt_cfac_i = TF(1) / (sdt * CFACTOR);
+    //         const TF lti = TF(1)/lifetime;  // 1/s
+    //         TF decay;
+    //         for (int j=jstart; j<jend; ++j)
+    //         #pragma ivdep
+    //             for (int i=istart; i<iend; ++i)
+    //             {
+    //                 const int ijk = i + j*jstride + k*kstride;
+    //                 const int ij = i + j*jstride;
+    // 
+    //                 // kg/kg --> molH2O/molAir --*C_M--> molecules/cm3 limit to 1 molecule/cm3 to avoid error usr_HO2_HO2
+    //                 // const TF C_H2O = std::max(qt[ijk] * xmair * C_M * xmh2o_i, TF(1));
+    //                 // const TF TEMP = temp[ijk];
+    // 
+    //                 if (k==kstart)
+    //                 {
+    //                     // Add new concentration scaling calculations
+    //                     // Get concentrations at two vertical levels (kstart and kstart+1)
+    //                     const int ijk1 = i + j*jstride + kstart*kstride;
+    //                     const int ijk2 = i + j*jstride + (kstart+1)*kstride;
+    //                     
+    //                     const TF c_1 = nh3[ijk1];
+    //                     const TF c_2 = nh3[ijk2];
+    //                     
+    //                     // Heights at the two levels
+    //                     const TF z_1 = z[kstart];
+    //                     const TF z_2 = z[kstart+1];
+    //                     
+    //                     // Obukhov length from surface
+    //                     const TF L = obuk[ij];
+    //                     
+    //                     const TF gradient_factor = calc_factor(z_1, z_2, L);       // For calculating c* from gradient
+    //                     
+    //                     // Calculate cstar with stability correction (remove cstar2)
+    //                     if (std::abs(gradient_factor) > TF(1e-15))
+    //                     {
+    //                         cstar[ij] = +1.0 * (c_2 - c_1) / gradient_factor;
+    //                     }
+    //                     else
+    //                     {
+    //                         cstar[ij] = TF(0.0);
+    //                     }
+    //                     
+    //                     // Use adaptive reference height for each grid point
+    //                     const TF local_z_ref = z_ref_field[ij];
+    //                     const TF scaling_factor = calc_factor(z_1, local_z_ref, L);
+    //                     c_target[ij] = c_1 + cstar[ij] * scaling_factor;
+    // 
+    //                     // Calculate and accumulate flux for this RK3 step
+    //                     // Note: flux is accumulated (+=) and scaled by sdt
+    // 
+    //                     // // Calculate instantaneous flux first (original method)
+    //                     // flux_inst[ij] = (-1.0) * vdnh3[ij] * nh3[ijk] * rhoref[k] * xmair_i * xmnh3; // [kg(NH3) m-2 s-1]
+    //                     flux_inst[ij] = (-1.0) * vdnh3[ij] * c_target[ij] * rhoref[k] * xmair_i * xmnh3; // [kg(NH3) m-2 s-1]
+    // 
+    //                     // accumulate over sub-timestep for statistics (gets reset periodically)
+    //                     TF flux = flux_inst[ij] * sdt; // [kg m⁻² s⁻¹] × [s] = [kg m⁻²] Scale by timestep for accumulation     
+    //                     flux_nh3[ij] += flux;        // For period statistics - Accumulate [kg m⁻²]
+    //                     
+    //                     // accumulate total flux (never gets reset)
+    //                     total_flux_nh3[ij] += flux;  // [kg m⁻²]
+    // 
+    //                     // decay = vdnh3[ij]*dzi[k] + lti;   // 1/s
+    //                     if (std::abs(nh3[ijk]) > TF(1e-15)) //to prevent division by zero
+    //                     {
+    //                         decay = (vdnh3[ij] * dzi[k] * c_target[ij] / nh3[ijk]) + lti;   // 1/s
+    //                     }
+    //                     else
+    //                     {
+    //                     decay = lti; // 1/s
+    //                     }
+    //                 }
+    //                 else
+    //                 { 
+    //                     decay = lti; // 1/s
+    //                 }
+
+    //                 // update tendencies:
+    //                 tnh3[ijk] -= decay*nh3[ijk];
+    // 
+    //                 // Get statistics for reaction fluxes:
+    //                 //if (abs(sdt/dt - 1./3.) < 1e-5)
+    //                 //{
+    //                 //    for (int l=0; l<NREACT; ++l)
+    //                 //        rfa[(k-kstart)*NREACT+l] +=  RF[l]*dt;    // take the first evaluation in the RK3 steps, but with full time step.
+    //                 //}
+    // 
+    //                 //  Reculculate tendency and add to the tendency of the transported tracers:
+    //             } // i
+    //     } // k
+    // }
 }
 
 template<typename TF>
