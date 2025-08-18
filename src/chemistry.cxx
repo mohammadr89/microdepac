@@ -55,7 +55,7 @@ inline TF calc_factor(const TF z1, const TF z2, const TF L)
     // Calculate stability corrections
     TF psi1 = TF(0), psi2 = TF(0);
     
-    if (std::abs(L) > TF(1e-15))
+    if (std::abs(L) > TF(1e-16))
     {
         namespace most = Monin_obukhov;
         
@@ -228,7 +228,7 @@ namespace
                         const TF gradient_factor = calc_factor(z_1, z_2, L);       
                         
                         // Calculate cstar with stability correction
-                        if (std::abs(gradient_factor) > TF(1e-15))
+                        if (std::abs(gradient_factor) > TF(1e-16))
                         {
                             cstar[ij] = +1.0 * (c_2 - c_1) / gradient_factor;
                         }
@@ -304,7 +304,7 @@ namespace
                         else
                         {
                             // MULTI-LEVEL METHOD: distributed deposition with density correction
-                            if (std::abs(nh3[ijk]) > TF(1e-15)) // Prevent division by zero
+                            if (std::abs(nh3[ijk]) > TF(1e-16)) // Prevent division by zero
                             {
                                 const TF c_this_level = surface_weights[local_ij][k - kstart];
                                 const TF weight = c_this_level / sum_weights[local_ij];
@@ -419,7 +419,7 @@ namespace
     //                     const TF gradient_factor = calc_factor(z_1, z_2, L);       // For calculating c* from gradient
     //                     
     //                     // Calculate cstar with stability correction (remove cstar2)
-    //                     if (std::abs(gradient_factor) > TF(1e-15))
+    //                     if (std::abs(gradient_factor) > TF(1e-16))
     //                     {
     //                         cstar[ij] = +1.0 * (c_2 - c_1) / gradient_factor;
     //                     }
@@ -448,7 +448,7 @@ namespace
     //                     total_flux_nh3[ij] += flux;  // [kg m⁻²]
     // 
     //                     // decay = vdnh3[ij]*dzi[k] + lti;   // 1/s
-    //                     if (std::abs(nh3[ijk]) > TF(1e-15)) //to prevent division by zero
+    //                     if (std::abs(nh3[ijk]) > TF(1e-16)) //to prevent division by zero
     //                     {
     //                         decay = (vdnh3[ij] * dzi[k] * c_target[ij] / nh3[ijk]) + lti;   // 1/s
     //                     }
