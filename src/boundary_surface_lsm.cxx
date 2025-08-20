@@ -683,24 +683,24 @@ void Boundary_surface_lsm<TF>::exec(
 
     }
 
-    // Debug output for adaptive reference heights
-    if (master.get_mpiid() == 0)
-        std::cout << "DEBUG: Reached main debug location, iteration = " << timeloop.get_iteration() << std::endl;
+    // // Debug output for adaptive reference heights
+    // if (master.get_mpiid() == 0)
+    //     std::cout << "DEBUG: Reached main debug location, iteration = " << timeloop.get_iteration() << std::endl;
 
-    if (sw_adaptive_z_ref && master.get_mpiid() == 0)
-    {
-        // Calculate min/max only over computational domain
-        TF z_ref_min = 1e10, z_ref_max = -1e10;
-        for (int j=gd.jstart; j<gd.jend; ++j)
-            for (int i=gd.istart; i<gd.iend; ++i) {
-                const int ij = i + j*gd.icells;
-                z_ref_min = std::min(z_ref_min, z_ref_field[ij]);
-                z_ref_max = std::max(z_ref_max, z_ref_field[ij]);
-            }
-        
-        std::cout << "Adaptive z_ref range: " << z_ref_min << " to " << z_ref_max << " m" << std::endl;
-        std::cout << "Physical consistency: dutot and all scalars use same reference heights" << std::endl;
-    }
+    // if (sw_adaptive_z_ref && master.get_mpiid() == 0)
+    // {
+    //     // Calculate min/max only over computational domain
+    //     TF z_ref_min = 1e10, z_ref_max = -1e10;
+    //     for (int j=gd.jstart; j<gd.jend; ++j)
+    //         for (int i=gd.istart; i<gd.iend; ++i) {
+    //             const int ij = i + j*gd.icells;
+    //             z_ref_min = std::min(z_ref_min, z_ref_field[ij]);
+    //             z_ref_max = std::max(z_ref_max, z_ref_field[ij]);
+    //         }
+    //     
+    //     std::cout << "Adaptive z_ref range: " << z_ref_min << " to " << z_ref_max << " m" << std::endl;
+    //     std::cout << "Physical consistency: dutot and all scalars use same reference heights" << std::endl;
+    // }
 
     // Override grid point with water
     if (sw_water)
