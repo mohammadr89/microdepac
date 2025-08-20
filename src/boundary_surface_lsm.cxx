@@ -427,6 +427,8 @@ void Boundary_surface_lsm<TF>::exec(
     auto z_ref_level_as_TF = fields.get_tmp_xy();
     precalc_reference_levels((*z_ref_level_as_TF).data());
 
+    boundary_cyclic.exec_2d(z_ref_field.data());
+
     // Calculate dutot using adaptive reference levels for physical consistency
     bsk::calc_dutot_adaptive(
             (*dutot).data(),
@@ -2066,7 +2068,8 @@ void Boundary_surface_lsm<TF>::precalc_reference_levels(TF* const restrict z_ref
             // Calculate reference level for this grid point
             int z_ref_level = gd.kstart;  // Default to first level
             
-            if (sw_adaptive_z_ref) {
+            if (sw_adaptive_z_ref)
+            {
                 z_ref_level = lsmk::find_reference_level(
                     gd.z.data(), z0m[ij], z_ref_factor, z_ref_tolerance,
                     sw_prescribed_z_ref, z_ref_prescribed, gd.kstart, gd.kend);
@@ -2086,6 +2089,8 @@ void Boundary_surface_lsm<TF>::precalc_reference_levels(TF* const restrict z_ref
             //     std::cout << "  z_ref_height = " << gd.z[z_ref_level] << std::endl;
             // }
         }
+    boundary_cyclic.exec_2d(z_ref_field.data());
+    boundary_cyclic.exec_2d(z_ref_level_field_as_TF);
 }
 
 #ifdef FLOAT_SINGLE
