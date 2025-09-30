@@ -58,8 +58,15 @@ inline TF calc_factor(const TF z1, const TF z2, const TF L)
     {
         namespace most = Monin_obukhov;
         
-        const TF z1_over_L = z1 / L;
-        const TF z2_over_L = z2 / L;
+        // Calculate z/L ratios
+        const TF z1_over_L_raw = z1 / L;
+        const TF z2_over_L_raw = z2 / L;
+        
+        // Apply MicroHH's capping: z/L between -10,000 and +10
+        const TF z1_over_L = std::min(std::max(z1_over_L_raw, Constants::zL_min<TF>), 
+                                       Constants::zL_max<TF>);
+        const TF z2_over_L = std::min(std::max(z2_over_L_raw, Constants::zL_min<TF>), 
+                                       Constants::zL_max<TF>);
         
         psi1 = (z1_over_L <= TF(0)) ? 
             most::psih_unstable(z1_over_L) : most::psih_stable(z1_over_L);
@@ -69,6 +76,28 @@ inline TF calc_factor(const TF z1, const TF z2, const TF L)
     
     return (std::log(z2/z1) - psi2 + psi1) / Constants::kappa<TF>;
 }
+
+// template<typename TF>
+// inline TF calc_factor(const TF z1, const TF z2, const TF L)
+// {
+//     // Calculate stability corrections
+//     TF psi1 = TF(0), psi2 = TF(0);
+//     
+//     if (std::abs(L) > TF(1e-15))
+//     {
+//         namespace most = Monin_obukhov;
+//         
+//         const TF z1_over_L = z1 / L;
+//         const TF z2_over_L = z2 / L;
+//         
+//         psi1 = (z1_over_L <= TF(0)) ? 
+//             most::psih_unstable(z1_over_L) : most::psih_stable(z1_over_L);
+//         psi2 = (z2_over_L <= TF(0)) ? 
+//             most::psih_unstable(z2_over_L) : most::psih_stable(z2_over_L);
+//     }
+//     
+//     return (std::log(z2/z1) - psi2 + psi1) / Constants::kappa<TF>;
+// }
 
 namespace
 {
