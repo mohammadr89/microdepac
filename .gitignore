@@ -20,3 +20,10 @@ microhh/build/
 microhh/cases/
 build/
 cases/
+
+# Compiled libraries and object files
+*.a
+*.so
+*.o
+*.lib
+depac_lib/libmicrohhc.a
