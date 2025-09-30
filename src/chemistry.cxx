@@ -278,16 +278,31 @@ namespace
                         {
                             cstar1[ij] = TF(0.0);  // Add this else clause for safety
                         }
-    
+
                         const TF scaling_factor = calc_factor(z_1, z_target, L);
                         c_target[ij] = c_1 + cstar1[ij] * scaling_factor;
-    
+                        
+                        // Check if first grid level is high enough above roughness for MO theory
+                        TF concentration_for_flux;
+                        if (z_1 < 20.0 * z0m[ij])
+                        {
+                            // Grid level is NOT sufficiently high - too close to surface
+                            concentration_for_flux = c_target[ij];
+                        }
+                        else
+                        {
+                            // Grid level too close to surface - use first level directly
+                            // Use first level concentration directly (MO theory not valid)
+                            c_target[ij] = c_1;  // Update c_target for consistency
+                            concentration_for_flux = c_1;
+                        }
+                        
                         // Calculate and accumulate flux for this RK3 step
                         // Note: flux is accumulated (+=) and scaled by sdt
-    
+                        
                         // // Calculate instantaneous flux first (original method)
                         // flux_inst[ij] = (-1.0) * vdnh3[ij] * nh3[ijk] * rhoref[k] * xmair_i * xmnh3; // [kg(NH3) m-2 s-1]
-                        flux_inst[ij] = (-1.0) * vdnh3[ij] * c_target[ij] * rhoref[k] * xmair_i * xmnh3; // [kg(NH3) m-2 s-1]
+                        flux_inst[ij] = (-1.0) * vdnh3[ij] * concentration_for_flux * rhoref[k] * xmair_i * xmnh3; // [kg(NH3) m-2 s-1]
     
                         // accumulate over sub-timestep for statistics (gets reset periodically)
                         TF flux = flux_inst[ij] * sdt; // [kg m⁻² s⁻¹] × [s] = [kg m⁻²] Scale by timestep for accumulation     
@@ -295,11 +310,11 @@ namespace
                         
                         // accumulate total flux (never gets reset)
                         total_flux_nh3[ij] += flux;  // [kg m⁻²]
-    
+                        
                         // decay = vdnh3[ij]*dzi[k] + lti;   // 1/s
                         if (std::abs(nh3[ijk]) > TF(1e-15)) //to prevent division by zero
                         {
-                            decay = (vdnh3[ij] * dzi[k] * c_target[ij] / nh3[ijk]) + lti;   // 1/s
+                            decay = (vdnh3[ij] * dzi[k] * concentration_for_flux / nh3[ijk]) + lti;   // 1/s
                         }
                         else
                         {
