@@ -288,6 +288,13 @@ namespace
                         {
                             // Grid level is NOT sufficiently high - too close to surface
                             concentration_for_flux = c_target[ij];
+                            
+                            // // Debug print for first grid point only
+                            // if (i == istart && j == jstart)
+                            // {
+                            //     std::printf("Time step: z_1=%.3f < 20*z0m=%.3f -> Using c_target=%.6e\n", 
+                            //                 z_1, 20.0*z0m[ij], c_target[ij]);
+                            // }
                         }
                         else
                         {
@@ -295,7 +302,32 @@ namespace
                             // Use first level concentration directly (MO theory not valid)
                             c_target[ij] = c_1;  // Update c_target for consistency
                             concentration_for_flux = c_1;
+                            
+                            // // Debug print for first grid point only
+                            // if (i == istart && j == jstart)
+                            // {
+                            //     std::printf("Time step: z_1=%.3f >= 20*z0m=%.3f -> Using c_1=%.6e\n", 
+                            //                 z_1, 20.0*z0m[ij], c_1);
+                            // }
                         }
+
+                        // const TF scaling_factor = calc_factor(z_1, z_target, L);
+                        // c_target[ij] = c_1 + cstar1[ij] * scaling_factor;
+                        // 
+                        // // Check if first grid level is high enough above roughness for MO theory
+                        // TF concentration_for_flux;
+                        // if (z_1 < 20.0 * z0m[ij])
+                        // {
+                        //     // Grid level is NOT sufficiently high - too close to surface
+                        //     concentration_for_flux = c_target[ij];
+                        // }
+                        // else
+                        // {
+                        //     // Grid level too close to surface - use first level directly
+                        //     // Use first level concentration directly (MO theory not valid)
+                        //     c_target[ij] = c_1;  // Update c_target for consistency
+                        //     concentration_for_flux = c_1;
+                        // }
                         
                         // Calculate and accumulate flux for this RK3 step
                         // Note: flux is accumulated (+=) and scaled by sdt
