@@ -20,6 +20,32 @@
  * along with MicroHH.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+/*
+ * INPUTS AND OUTPUTS
+ * === INPUTS (*.ini file) ===
+ * [chemistry]
+ * swchemistry  = boolean : Enable/disable chemistry module (default: false)
+ * lifetime     = float   : Tracer decay timescale [s] (default: 1e30)
+ * z_target     = float   : Target height for concentration extrapolation [m] (required)
+ * rsl_ratio    = float   : Roughness sublayer ratio for MO validity (default: 20.0)
+ * 
+ * === INPUTS (NetCDF file: timedep_chem group) ===
+ * Photolysis rates: jo31d, jh2o2, jno2, jno3, jn2o5, jch2or, jch2om, jch3o2h
+ * Emissions: emi_isop, emi_no
+ * All with time dimension: time_chem*
+ * 
+ * === OUTPUTS (Statistics) ===
+ * vdnh3              : NH3 deposition velocity [m s-1]
+ * flux_inst          : Instantaneous NH3 flux [kg m-2 s-1]
+ * total_flux_mol_ha  : NH3 cumulative flux (total) [mol ha-1]
+ * cstar1             : Concentration scaling (with stability) [mol mol-1]
+ * cstar2             : Concentration scaling (neutral) [mol mol-1]
+ * c_grid_closest     : NH3 at closest grid point to z_target [mol mol-1]
+ * c_target           : NH3 at target height (optimal) [mol mol-1]
+ * c_diff_flux        : Concentration difference flux [kg m-2 s-1]
+ * chem_budget        : Chemistry budget per layer [molecules cm-3 s-1]
+ */
+
 //#include <cstdio>
 #include <cstdio>
 #include <iostream>
