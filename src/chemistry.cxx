@@ -77,28 +77,6 @@ inline TF calc_factor(const TF z1, const TF z2, const TF L)
     return (std::log(z2/z1) - psi2 + psi1) / Constants::kappa<TF>;
 }
 
-// template<typename TF>
-// inline TF calc_factor(const TF z1, const TF z2, const TF L)
-// {
-//     // Calculate stability corrections
-//     TF psi1 = TF(0), psi2 = TF(0);
-//     
-//     if (std::abs(L) > TF(1e-15))
-//     {
-//         namespace most = Monin_obukhov;
-//         
-//         const TF z1_over_L = z1 / L;
-//         const TF z2_over_L = z2 / L;
-//         
-//         psi1 = (z1_over_L <= TF(0)) ? 
-//             most::psih_unstable(z1_over_L) : most::psih_stable(z1_over_L);
-//         psi2 = (z2_over_L <= TF(0)) ? 
-//             most::psih_unstable(z2_over_L) : most::psih_stable(z2_over_L);
-//     }
-//     
-//     return (std::log(z2/z1) - psi2 + psi1) / Constants::kappa<TF>;
-// }
-
 namespace
 {
     double CFACTOR;                          /* Conversion factor for concentration units */
@@ -144,34 +122,6 @@ namespace
         return k_ref;
     }
     
-    /**
-     * APPROACH B: Use existing cstar1 with optimal reference
-     */
-    template<typename TF>
-    TF calc_approach_B(
-        const TF cstar1_val,
-        const TF* const nh3,
-        const TF* const z,
-        const TF z_target,
-        const TF L,
-        const int i, const int j,
-        const int kstart, const int kend,
-        const int jstride, const int kstride)
-    {
-        // Find optimal reference height
-        const int k1 = find_ref_below(z, z_target, kstart, kend);
-        
-        // Get reference concentration and height
-        const int ijk1 = i + j * jstride + k1 * kstride;
-        const TF c1 = nh3[ijk1];
-        const TF z1 = z[k1];
-        
-        // Calculate factor using general function
-        const TF scaling_factor = calc_factor(z1, z_target, L);      // For scaling to target height
-        
-        return c1 + cstar1_val * scaling_factor;
-    }
-    
     template<typename TF>
     void pss(
         TF* restrict tnh3,
@@ -198,6 +148,7 @@ namespace
         const TF sdt,
         const TF lifetime,
         const TF z_target,
+        const TF rsl_ratio,
         const int istart, const int iend,
         const int jstart, const int jend,
         const int kstart, const int kend,
@@ -213,8 +164,7 @@ namespace
         const TF Na = 6.02214086e23; // Avogadros number [molecules mol-1]
     
         // Update the time integration of the reaction fluxes with the full timestep on first RK3 step
-        //if (abs(sdt/dt - 1./3.) < 1e-5) trfa += dt;
-        trfa += sdt;
+        if (abs(sdt/dt - 1./3.) < 1e-5) trfa += dt;
     
         // Import Monin_obukhov namespace for stability functions
         namespace most = Monin_obukhov;
@@ -284,56 +234,35 @@ namespace
                         
                         // Check if first grid level is high enough above roughness for MO theory
                         TF concentration_for_flux;
-                        if (z_1 < 20.0 * z0m[ij])
+                        if (z_1 < rsl_ratio * z0m[ij])
                         {
-                            // Grid level is NOT sufficiently high - too close to surface
+                            // First grid level is too close to surface (inside roughness sublayer)
+                            // MO theory not valid at z_1, so extrapolate upward to z_target
                             concentration_for_flux = c_target[ij];
                             
                             // // Debug print for first grid point only
                             // if (i == istart && j == jstart)
                             // {
-                            //     std::printf("Time step: z_1=%.3f < 20*z0m=%.3f -> Using c_target=%.6e\n", 
-                            //                 z_1, 20.0*z0m[ij], c_target[ij]);
+                            //     std::printf("Time step: z_1=%.3f < 20*z0m=%.3f -> Using c_target=%.6e\n", z_1, rsl_ratio*z0m[ij], c_target[ij]);
                             // }
                         }
                         else
                         {
-                            // Grid level too close to surface - use first level directly
-                            // Use first level concentration directly (MO theory not valid)
+                            // First grid level is high enough above surface (outside roughness sublayer)
+                            // MO theory already valid at z_1, use concentration directly
                             c_target[ij] = c_1;  // Update c_target for consistency
                             concentration_for_flux = c_1;
                             
                             // // Debug print for first grid point only
                             // if (i == istart && j == jstart)
                             // {
-                            //     std::printf("Time step: z_1=%.3f >= 20*z0m=%.3f -> Using c_1=%.6e\n", 
-                            //                 z_1, 20.0*z0m[ij], c_1);
+                            //     std::printf("Time step: z_1=%.3f >= 20*z0m=%.3f -> Using c_1=%.6e\n", z_1, rsl_ratio*z0m[ij], c_1);
                             // }
                         }
 
-                        // const TF scaling_factor = calc_factor(z_1, z_target, L);
-                        // c_target[ij] = c_1 + cstar1[ij] * scaling_factor;
-                        // 
-                        // // Check if first grid level is high enough above roughness for MO theory
-                        // TF concentration_for_flux;
-                        // if (z_1 < 20.0 * z0m[ij])
-                        // {
-                        //     // Grid level is NOT sufficiently high - too close to surface
-                        //     concentration_for_flux = c_target[ij];
-                        // }
-                        // else
-                        // {
-                        //     // Grid level too close to surface - use first level directly
-                        //     // Use first level concentration directly (MO theory not valid)
-                        //     c_target[ij] = c_1;  // Update c_target for consistency
-                        //     concentration_for_flux = c_1;
-                        // }
-                        
                         // Calculate and accumulate flux for this RK3 step
                         // Note: flux is accumulated (+=) and scaled by sdt
                         
-                        // // Calculate instantaneous flux first (original method)
-                        // flux_inst[ij] = (-1.0) * vdnh3[ij] * nh3[ijk] * rhoref[k] * xmair_i * xmnh3; // [kg(NH3) m-2 s-1]
                         flux_inst[ij] = (-1.0) * vdnh3[ij] * concentration_for_flux * rhoref[k] * xmair_i * xmnh3; // [kg(NH3) m-2 s-1]
     
                         // accumulate over sub-timestep for statistics (gets reset periodically)
@@ -375,8 +304,20 @@ namespace
 }
 
 template<typename TF>
-Chemistry<TF>::Chemistry(Master& masterin, Grid<TF>& gridin, Fields<TF>& fieldsin, Radiation<TF>& radiationin, Input& inputin):
-    master(masterin), grid(gridin), fields(fieldsin), radiation(radiationin), field3d_operators(master, grid, fields)
+// Chemistry<TF>::Chemistry(Master& masterin, Grid<TF>& gridin, Fields<TF>& fieldsin, Radiation<TF>& radiationin, Input& inputin):
+//     master(masterin), grid(gridin), fields(fieldsin), radiation(radiationin), field3d_operators(master, grid, fields) // added Radiation<TF>& radiationin parameter and member variable
+Chemistry<TF>::Chemistry(
+    Master& masterin, 
+    Grid<TF>& gridin, 
+    Fields<TF>& fieldsin,      // ← Parameter comes in
+    Radiation<TF>& radiationin, 
+    Input& inputin)
+    : master(masterin)          // ← Step 1: master member is initialized
+    , grid(gridin)              // ← Step 2: grid member is initialized  
+    , fields(fieldsin)          // ← Step 3: fields member is initialized FROM fieldsin
+    // fields (is the member variable) - fieldsin (is the parameter)
+    , radiation(radiationin)    // ← Step 4: radiation member is initialized
+    , field3d_operators(master, grid, fields)  // ← Step 5: Uses members (already set!) // added Radiation<TF>& radiationin parameter and member variable
 {
     // Rest of the constructor remains the same
     const std::string group_name = "default";
@@ -386,14 +327,35 @@ Chemistry<TF>::Chemistry(Master& masterin, Grid<TF>& gridin, Fields<TF>& fieldsi
     lifetime     = inputin.get_item<TF>("chemistry", "lifetime", "", (TF)1e30);  // seconds
     z_target = inputin.get_item<TF>("chemistry", "z_target", "");
 
+    // Roughness sublayer ratio (Basu & Lacser 2017, DOI: 10.1007/s10546-016-0225-y)
+    // Recommended: 50 (z1 > 50*z0), EPA: 20, Wind engineering: 30
+    rsl_ratio = inputin.get_item<TF>("chemistry", "rsl_ratio", "", (TF)20.0);
+
     master.print_message("Lifetime of the tracer:  = %13.5e s \n", lifetime);
+    master.print_message("Target height z_target = %13.5e m \n", z_target);
+    master.print_message("Roughness sublayer ratio (rsl_ratio) = %13.5e \n", rsl_ratio);
+
     if (!sw_chemistry)
         return;
     //deposition = std::make_shared<Deposition <TF>>(masterin, gridin, fieldsin, radiationin, inputin);
 
-    deposition = std::make_shared<Deposition<TF>>(master, grid, fields, radiation, *this, inputin);
-    //The *this passes the current Chemistry object as a reference to the Deposition constructor.
+    deposition = std::make_shared<Deposition<TF>>(masterin, gridin, fieldsin, radiationin, *this, inputin);
+    // *this passes the current Chemistry object as a reference to the Deposition constructor.
+    // With *this: Deposition can access Chemistry's methods and data
+    // Can call chemistry.get_vd("nh3")
+    // Can read chemistry.lifetime
+    // Can interact bidirectionally with Chemistry
+    // Without *this: Deposition is independent
+    // Cannot directly access Chemistry object
+    // One-way relationship: Chemistry knows about Deposition, but not vice versa
 
+    // deposition = std::make_shared<Deposition<TF>>(
+    //     master,      // ← Member variable (already initialized in Step 1)
+    //     grid,        // ← Member variable (already initialized in Step 2)
+    //     fields,      // ← Member variable (already initialized in Step 3)
+    //     radiation,   // ← Member variable (already initialized in Step 4)
+    //     *this, 
+    //     inputin);    // ← Still the parameter (not stored as member)
 }
 
 template <typename TF>
@@ -460,7 +422,7 @@ void Chemistry<TF>::exec_stats(const int iteration, const double time, Stats<TF>
         // Calculate statistics for new variables
         stats.calc_stats_2d("cstar1", cstar1, no_offset);
         stats.calc_stats_2d("cstar2", cstar2, no_offset);
-        stats.calc_stats_2d("c20m_grid", c20m_grid, no_offset);
+        stats.calc_stats_2d("c_grid_closest", c_grid_closest, no_offset);
         stats.calc_stats_2d("c_target", c_target, no_offset);
         stats.calc_stats_2d("c_diff_flux", c_diff_flux, no_offset);
 
@@ -536,8 +498,8 @@ void Chemistry<TF>::init(Input& inputin)
     cstar2.resize(gd.ijcells);
     std::fill(cstar2.begin(), cstar2.end(), TF(0));  // Initialize with zeros
     
-    c20m_grid.resize(gd.ijcells);
-    std::fill(c20m_grid.begin(), c20m_grid.end(), TF(0));
+    c_grid_closest.resize(gd.ijcells);
+    std::fill(c_grid_closest.begin(), c_grid_closest.end(), TF(0));
 
     // Only one concentration array needed now (optimal method)
     c_target.resize(gd.ijcells);
@@ -706,9 +668,9 @@ void Chemistry<TF>::create(
         //stats.add_time_series("flux_nh3", "NH3 surface flux", "mol(NH3) m-2 s-1", group_named);
         stats.add_time_series("cstar1", "C*_1 concentration scaling parameter", "mol mol-1", group_named);
         stats.add_time_series("cstar2", "C*_2 concentration scaling parameter", "mol mol-1", group_named);
-        stats.add_time_series("c20m_grid", "NH3 concentration at closest grid point to 20m", "mol mol-1", group_named);
+        stats.add_time_series("c_grid_closest", "NH3 concentration at closest grid point to 20m", "mol mol-1", group_named);
         stats.add_time_series("c_target", "NH3 concentration at target height (optimal)", "mol mol-1", group_named);
-        stats.add_time_series("c_diff_flux", "Concentration difference flux (c_target - c20m_grid) × 10^9 × rho × conversion", "kg m-2 s-1", group_named);
+        stats.add_time_series("c_diff_flux", "Concentration difference flux (c_target - c_grid_closest) × 10^9 × rho × conversion", "kg m-2 s-1", group_named);
         stats.add_time_series("total_flux_mol_ha", "NH3 total cumulative flux", "mol ha-1", group_named);
     }
 
@@ -716,7 +678,7 @@ void Chemistry<TF>::create(
     if (cross.get_switch())
     {
         //std::vector<std::string> allowed_crossvars = {"vdnh3"};
-        std::vector<std::string> allowed_crossvars = {"vdnh3","flux_nh3","flux_inst","total_flux_mol_ha","cstar1","cstar2","c20m_grid","c_target","c_diff_flux"};
+        std::vector<std::string> allowed_crossvars = {"vdnh3","flux_nh3","flux_inst","total_flux_mol_ha","cstar1","cstar2","c_grid_closest","c_target","c_diff_flux"};
         cross_list = cross.get_enabled_variables(allowed_crossvars);
 
         // `deposition->create()` only creates cross-sections.
@@ -763,8 +725,8 @@ void Chemistry<TF>::exec_cross(Cross<TF>& cross, unsigned long iotime)
             cross.cross_plane(cstar1.data(), no_offset, name, iotime);
         else if (name == "cstar2")
             cross.cross_plane(cstar2.data(), no_offset, name, iotime);
-        else if (name == "c20m_grid")
-            cross.cross_plane(c20m_grid.data(), no_offset, name, iotime);
+        else if (name == "c_grid_closest")
+            cross.cross_plane(c_grid_closest.data(), no_offset, name, iotime);
         else if (name == "c_target")
             cross.cross_plane(c_target.data(), no_offset, name, iotime);
         else if (name == "c_diff_flux")
@@ -776,9 +738,7 @@ void Chemistry<TF>::exec_cross(Cross<TF>& cross, unsigned long iotime)
 }
 
 template <typename TF>
-void Chemistry<TF>::update_time_dependent(Timeloop<TF>& timeloop, Boundary<TF>& boundary, Thermo<TF>& thermo)
-
-
+void Chemistry<TF>::update_time_dependent(Timeloop<TF>& timeloop, Boundary<TF>& boundary, Thermo<TF>& thermo) // Added Thermo parameter
 {
     if (!sw_chemistry)
         return;
@@ -807,7 +767,7 @@ void Chemistry<TF>::update_time_dependent(Timeloop<TF>& timeloop, Boundary<TF>& 
 #ifndef USECUDA
 
 template<typename TF>
-void Chemistry<TF>::calc_c20m(Boundary<TF>& boundary)
+void Chemistry<TF>::calc_c_target(Boundary<TF>& boundary)
 {
     if (!sw_chemistry)
         return;
@@ -852,7 +812,7 @@ void Chemistry<TF>::calc_c20m(Boundary<TF>& boundary)
             // Calculate scaling factor from z_1 to target height
             const TF scaling_factor = calc_factor(z_1, target_height, obuk[ij]);
             
-            // Calculate c20m_grid: Find closest grid point to target height
+            // Calculate c_grid_closest: Find closest grid point to target height
             int k_closest = gd.kstart;
             TF min_distance = std::abs(gd.z[gd.kstart] - target_height);
             
@@ -868,9 +828,9 @@ void Chemistry<TF>::calc_c20m(Boundary<TF>& boundary)
             //const int ijk_closest = i + j * gd.jstride + k_closest * gd.ijcells;
             const int ijk_closest = i + j * gd.jstride + k_closest * gd.kstride;
 
-            c20m_grid[ij] = fields.sp.at("nh3")->fld[ijk_closest];
+            c_grid_closest[ij] = fields.sp.at("nh3")->fld[ijk_closest];
 
-            const TF concentration_diff = c_target[ij] - c20m_grid[ij];
+            const TF concentration_diff = c_target[ij] - c_grid_closest[ij];
             c_diff_flux[ij] = concentration_diff * TF(1e9) * fields.rhoref[k] * xmair_i * xmnh3;
         }
     }
@@ -881,9 +841,9 @@ void Chemistry<TF>::calc_c20m(Boundary<TF>& boundary)
 //     Calculates chemical reactions (like NH₃ decay)
 //     Computes surface fluxes (how much NH₃ deposits to ground)
 //     Updates concentrations for the next timestep
-//     Calls our new calc_c20m() to get 20m concentrations
+//     Calls our new calc_c_target() to get target height concentrations
 template <typename TF>
-void Chemistry<TF>::exec(Thermo<TF>& thermo, Boundary<TF>& boundary, double sdt, double dt)
+void Chemistry<TF>::exec(Thermo<TF>& thermo, Boundary<TF>& boundary, double sdt, double dt) // Added Boundary parameter to access Obukhov length and z0m
 {
     if (!sw_chemistry)
         return;
@@ -909,9 +869,6 @@ void Chemistry<TF>::exec(Thermo<TF>& thermo, Boundary<TF>& boundary, double sdt,
         }
     }
 
-
-    // REMOVE ALL THE DUPLICATE DECLARATIONS AND LOOPS
-
     pss<TF>(
             fields.st.at("nh3")->fld.data(),
             fields.sp.at("nh3")->fld.data(),
@@ -934,13 +891,14 @@ void Chemistry<TF>::exec(Thermo<TF>& thermo, Boundary<TF>& boundary, double sdt,
             trfa,
             dt, sdt, lifetime,
             z_target,
+            rsl_ratio,
             gd.istart, gd.iend,
             gd.jstart, gd.jend,
             gd.kstart, gd.kend,
             gd.icells, gd.ijcells,
             gd.dx, gd.dy);
 
-    calc_c20m(boundary);
+    calc_c_target(boundary);
 
 
     fields.release_tmp(tmp);
