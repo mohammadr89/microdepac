@@ -1007,7 +1007,6 @@ Deposition<TF>::Deposition(Master& masterin, Grid<TF>& gridin, Fields<TF>& field
 {
     sw_deposition = inputin.get_item<bool>("deposition", "swdeposition", "", false);
     use_depac = inputin.get_item<bool>("deposition", "use_depac", "", true);  // Default to DEPAC
-    t0 = inputin.get_item<TF>("time", "starttime", "", TF(0.0));    
 
     // Log which mode is being used
     if (sw_deposition) {
@@ -1030,6 +1029,26 @@ Deposition<TF>::Deposition(Master& masterin, Grid<TF>& gridin, Fields<TF>& field
     nwet_veg = inputin.get_item<int>("deposition", "nwet_veg", "");  // Vegetation wetness
     nwet_soil = inputin.get_item<int>("deposition", "nwet_soil", ""); // Soil wetness
     nwet_wet = inputin.get_item<int>("deposition", "nwet_wet", "");  // Wet surface wetness
+
+    // Read sinphi calculation method (default: prescribed from NetCDF)
+    sw_sinphi_prescr = inputin.get_item<bool>("deposition", "sw_sinphi_prescr", "", true);
+
+    if (sw_sinphi_prescr) {
+        // Read sunrise/sunset from input NetCDF file
+        Netcdf_file input_nc(master, "plume_chem_input.nc", Netcdf_mode::Read);
+        
+        t_sunrise = input_nc.get_variable<TF>("t_sunrise");
+        t_sunset = input_nc.get_variable<TF>("t_sunset");
+        
+        if (sw_deposition && use_depac) {
+            master.print_message("DEPAC: Using prescribed sinphi from NetCDF (sunrise=%.1fh, sunset=%.1fh)\n", 
+                                t_sunrise, t_sunset);
+        }
+    } else {
+        if (sw_deposition && use_depac) {
+            master.print_message("DEPAC: Using astronomical sinphi\n");
+        }
+    }
 
     //// Debug print
     //if (sw_override_ccomp) {
@@ -1257,48 +1276,43 @@ void Deposition<TF>::update_time_dependent(
 
     auto& gd = grid.get_grid_data();
 
-    // Get current model time
-    const TF model_time = timeloop.get_time();
-
-    // Calculate actual time of day 
-    const TF actual_time = t0 + model_time;
-
-    //// Debug prints (remove after testing)
-    //if (timeloop.get_iteration() % 100 == 0) { // Print every 100 iterations
-    //    master.print_message("DEBUG: t0=%f, model_time=%f, actual_time=%f\n", 
-    //                        t0, model_time, actual_time);
-    //    master.print_message("DEBUG: Hour of day=%f, Day of year=%f\n",
-    //                        timeloop.calc_hour_of_day(), timeloop.calc_day_of_year());
-    //}   
-
     const std::vector<TF>& rho = thermo.get_basestate_vector("rho");
 
-    // ADD THESE NEW DECLARATIONS HERE:
     std::vector<TF> T_a(gd.ijcells);   // Temperature array
     std::vector<TF> RH_a(gd.ijcells); // Relative humidity array
 
     // Only retrieve DEPAC-specific values if using DEPAC
-    if (use_depac) {
-        // Get day of year from Timeloop
+    if (use_depac)
+    {
+        // Initialize for DEPAC
         day_of_year = int(timeloop.calc_day_of_year());
-
-        // Get latitude from Grid
         lat = gd.lat;
+        
+        // Calculate sinphi
+        if (sw_sinphi_prescr)
+        {
+            // Prescribed: matches radiation schedule from NetCDF
+            const TF hour = timeloop.calc_hour_of_day();
+            const TF pi = 3.14159265358979323846;
+            const TF dlen = t_sunset - t_sunrise;
+            sinphi = std::sin(pi * (hour - t_sunrise) / dlen);
+            
+        }
+        else
+        {
+            // Astronomical: calculate from date/location
+            const int year = timeloop.get_year();
+            const TF secs = TF(timeloop.calc_hour_of_day() * 3600);
+            TF azimuth;
+            std::tie(sinphi, azimuth) = Radiation_rrtmgp_functions::calc_cos_zenith_angle(
+                    lat, gd.lon, day_of_year, secs, year);
+        }
 
-        const int year = timeloop.get_year();
-        const TF seconds_after_midnight = TF(timeloop.calc_hour_of_day() * 3600);
-        TF azimuth;
-
-        // Calculate sinphi using the radiation function
-        std::tie(sinphi, azimuth) = Radiation_rrtmgp_functions::calc_cos_zenith_angle(
-                lat, gd.lon, day_of_year, seconds_after_midnight, year);
-
-        //master.print_message("DEBUG: Time step %f, Hour of day %f, sinphi (from radiation) = %f\n", 
-        //        timeloop.get_time(), 
-        //        timeloop.calc_hour_of_day(),
-        //        sinphi);
-
-        //master.print_message("DEBUG: About to access radiation, hour = %f\n", timeloop.calc_hour_of_day());
+        // DEBUG: Print hour and sinphi every 100 iterations
+        // if (timeloop.get_iteration() % 100 == 0) {
+        //     const TF hour = timeloop.calc_hour_of_day();
+        //     master.print_message("Hour=%.3f, Day=%d, sinphi=%.6f\n", hour, day_of_year, sinphi);
+        // }
 
         const Radiation_prescribed<TF>& radiation_prescribed = static_cast<const Radiation_prescribed<TF>&>(radiation);
 
@@ -1327,6 +1341,16 @@ void Deposition<TF>::update_time_dependent(
     // Ask the fields object for a temporary field (a kind of temporary storage or workspace) 
     // and store it in a variable called tmp2.
     // 'fields' is an object that manages field data (like velocity, pressure, etc.)
+
+    // DEBUG: Print every 100 iterations
+    if (timeloop.get_iteration() % 100 == 0)
+    {
+        master.print_message("Iter=%d, Hour=%.3f, sinphi=%.6f, glrad=%.1f W/m2\n", 
+                            timeloop.get_iteration(),
+                            timeloop.calc_hour_of_day(), 
+                            sinphi,
+                            glrad);
+    }
 
     auto tmp2 = fields.get_tmp();
 
@@ -1566,7 +1590,6 @@ void Deposition<TF>::update_time_dependent(
     // spatial_avg_vd(vdhcho);
     // spatial_avg_vd(vdnh3);  // Added NH3
 }
-
 
 template<typename TF>
 void Deposition<TF>::exec_cross(Cross<TF>& cross, unsigned long iotime)
@@ -1988,5 +2011,3 @@ void Deposition<TF>::spatial_avg_vd(
 
 template class Deposition<double>;
 //:template class Chemistry<float>;
-
-
