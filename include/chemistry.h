@@ -58,7 +58,7 @@ class Chemistry
         void exec(Thermo<TF>&, Boundary<TF>&, double, double);     ///< Add the tendencies belonging to the chemistry processes.
         void exec_stats(const int, const double, Stats<TF>&);   /// calculate statistics
         void exec_cross(Cross<TF>&, unsigned long);
-        void calc_c20m(Boundary<TF>&);
+        void calc_c_target(Boundary<TF>&);
         
         // ← Added Getter Methods:
         const std::vector<TF>& get_c_target() const { return c_target; }
@@ -76,8 +76,9 @@ class Chemistry
 
         bool sw_chemistry;
         TF lifetime; // lifetime of species in seconds
-        TF z_target;  // Target height for concentration calculation (from input)
-        std::vector<TF> c_target;        // Target height concentration (optimal method)
+        TF z_target;  // Target height for concentration calculation (from input) - A single scalar value (TF)
+        std::vector<TF> c_target;        // Target height concentration (optimal method) - A vector of values (std::vector<TF>)
+        TF rsl_ratio; // Roughness sublayer ratio (alpha = z*/h) - Basu & Lacser (2017)
 
         Field3d_operators<TF> field3d_operators;
 
@@ -120,8 +121,8 @@ class Chemistry
         std::vector<TF> cstar1;       // Scaled concentration parameter C*_1
         std::vector<TF> cstar2;       // Simple log formula concentration parameter C*_2  
         
-        // ADD NEW ARRAYS FOR 20M CONCENTRATION CALCULATIONS:
-        std::vector<TF> c20m_grid;   // Actual simulated concentration at closest grid point to 20m
+        // ADD NEW ARRAYS FOR TARGET HEIGHT CONCENTRATION CALCULATIONS:
+        std::vector<TF> c_grid_closest;   // Actual simulated concentration at closest grid point to the target height
         std::vector<TF> c_diff_flux;  // Difference flux calculation
 };
 #endif
