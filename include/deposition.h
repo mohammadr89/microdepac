@@ -130,6 +130,9 @@ private:
     TF sai;              // Stem area index (m2/m2)
     TF lat;              // Latitude (degrees)
 
+    bool sw_sinphi_prescr;
+    TF t_sunrise;
+    TF t_sunset;
 
     // Time and surface parameters
     int day_of_year;     // Day of year
@@ -148,7 +151,7 @@ private:
     TF c_ug;  // Synchronized conversion factor for NH3
     TF pressure;        // Pressure (Pa)
 
-    std::string c20m_type; //Stores which type the user wants ("A", "B", "grid", "original")
+    std::vector<TF> land_use_type;
 
     // Tile management
     std::vector<std::string> deposition_tile_names {"veg", "soil", "wet"};
