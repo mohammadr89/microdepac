@@ -1,3 +1,79 @@
+/*
+ * MicroHH
+ * Copyright (c) 2011-2020 Chiel van Heerwaarden
+ * Copyright (c) 2011-2020 Thijs Heus
+ * Copyright (c) 2014-2020 Bart van Stratum
+ *
+ * This file is part of MicroHH
+ *
+ * MicroHH is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+
+ * MicroHH is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+
+ * You should have received a copy of the GNU General Public License
+ * along with MicroHH.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/*
+ * INPUTS AND OUTPUTS
+ * 
+ * === INPUTS (*.ini file) ===
+ * [deposition]
+ * swdeposition          = boolean : Enable/disable deposition module (default: false)
+ * use_depac             = boolean : Use DEPAC model vs. original model (default: true)
+ * 
+ * # DEPAC-specific parameters (only used when use_depac=true):
+ * iratns                = int     : NH3/SO2 ratio regime (required)
+ * hlaw                  = float   : Henry's law constant (required)
+ * react                 = float   : Reactivity factor (required)
+ * c_ave_prev_nh3        = float   : Previous NH3 concentration [ug m-3] (required)
+ * nwet_veg              = int     : Vegetation wetness indicator (required)
+ * nwet_soil             = int     : Soil wetness indicator (required)
+ * nwet_wet              = int     : Wet surface wetness indicator (required)
+ * sw_override_ccomp     = boolean : Override compensation point calculation (default: false)
+ * ccomp_override_value  = float   : Fixed compensation point value [ug m-3] (default: 0.0)
+ * 
+ * # Original model parameters (only used when use_depac=false):
+ * deposition_var        = float   : Deposition variance (default: 1e5)
+ * henry_so2             = float   : SO2 Henry's law constant (default: 1e5)
+ * rsoil_so2             = float   : SO2 soil resistance [s m-1] (default: 250.0)
+ * rwat_so2              = float   : SO2 water resistance [s m-1] (default: 1.0)
+ * rws_so2               = float   : SO2 wet skin resistance [s m-1] (default: 100.0)
+ * 
+ * [thermo]
+ * pbot                  = float   : Surface pressure [Pa] (required for DEPAC)
+ * 
+ * === OUTPUTS (Cross-sections) ===
+ * # Deposition velocities (per tile and grid-mean):
+ * vdnh3_veg, vdnh3_soil, vdnh3_wet     : NH3 deposition velocity [m s-1]
+ * 
+ * # Resistances (DEPAC only):
+ * ra, rb                               : Aerodynamic and quasi-laminar resistances [s m-1]
+ * ra_veg, ra_soil, ra_wet              : Per-tile aerodynamic resistance [s m-1]
+ * rb_veg, rb_soil, rb_wet              : Per-tile quasi-laminar resistance [s m-1]
+ * rc_tot, rc_tot_veg, rc_tot_soil, rc_tot_wet : Total canopy resistance [s m-1]
+ * rc_eff, rc_eff_veg, rc_eff_soil, rc_eff_wet : Effective canopy resistance [s m-1]
+ * cw, cstom, csoil_eff                 : External leaf, stomatal, soil resistances [s m-1]
+ * cw_veg, cstom_veg, csoil_eff_veg     : Per-tile resistances [s m-1]
+ * 
+ * # Compensation points (DEPAC only):
+ * ccomp_tot, ccomp_tot_veg, ccomp_tot_soil, ccomp_tot_wet : Total compensation point [ug m-3]
+ * cw_out, cstom_out, csoil_out         : Component compensation points [ug m-3]
+ * cw_out_veg, cstom_out_veg, etc.      : Per-tile compensation points [ug m-3]
+ * 
+ * # Surface meteorology (DEPAC only):
+ * T_surface, T_surface_veg, T_surface_soil, T_surface_wet     : Surface temperature [K]
+ * rh_surface, rh_surface_veg, rh_surface_soil, rh_surface_wet : Surface RH [%]
+ * obuk_veg, obuk_soil, obuk_wet        : Obukhov length [m]
+ * ustar_veg, ustar_soil, ustar_wet     : Friction velocity [m s-1]
+ */
+
 #include "boundary.h"
 #include "boundary_surface_lsm.h"
 #include "chemistry.h"
