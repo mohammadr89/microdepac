@@ -76,9 +76,9 @@ class Chemistry
 
         bool sw_chemistry;
         TF lifetime; // lifetime of species in seconds
-        TF z_target;  // Target height for concentration calculation (from input) - A single scalar value (TF)
+        // TF z_target;  // Target height for concentration calculation (from input) - A single scalar value (TF)
         std::vector<TF> c_target;        // Target height concentration (optimal method) - A vector of values (std::vector<TF>)
-        TF rsl_ratio; // Roughness sublayer ratio (alpha = z*/h) - Basu & Lacser (2017)
+        TF rsl_ratio; // Roughness sublayer ratio (alpha = z*/h) - Basu & Lacser (2017); Target height is calculated as z_target = rsl_ratio * z0m
 
         Field3d_operators<TF> field3d_operators;
 

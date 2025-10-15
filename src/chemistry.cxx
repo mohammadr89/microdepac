@@ -173,7 +173,7 @@ namespace
         const TF dt,
         const TF sdt,
         const TF lifetime,
-        const TF z_target,
+        // const TF z_target,
         const TF rsl_ratio,
         const int istart, const int iend,
         const int jstart, const int jend,
@@ -254,6 +254,8 @@ namespace
                         {
                             cstar1[ij] = TF(0.0);  // Add this else clause for safety
                         }
+
+                        const TF z_target = rsl_ratio * z0m[ij];
 
                         const TF scaling_factor = calc_factor(z_1, z_target, L);
                         c_target[ij] = c_1 + cstar1[ij] * scaling_factor;
@@ -351,14 +353,14 @@ Chemistry<TF>::Chemistry(
     sw_chemistry = inputin.get_item<bool>("chemistry", "swchemistry", "", false);
     //lifetime     = inputin.get_item<TF>("chemistry", "lifetime", "", (TF)72000);  // seconds (20 hour default)
     lifetime     = inputin.get_item<TF>("chemistry", "lifetime", "", (TF)1e30);  // seconds
-    z_target = inputin.get_item<TF>("chemistry", "z_target", "");
+    // z_target = inputin.get_item<TF>("chemistry", "z_target", "");
 
     // Roughness sublayer ratio (Basu & Lacser 2017, DOI: 10.1007/s10546-016-0225-y)
     // Recommended: 50 (z1 > 50*z0), EPA: 20, Wind engineering: 30
     rsl_ratio = inputin.get_item<TF>("chemistry", "rsl_ratio", "", (TF)20.0);
 
     master.print_message("Lifetime of the tracer:  = %13.5e s \n", lifetime);
-    master.print_message("Target height z_target = %13.5e m \n", z_target);
+    // master.print_message("Target height z_target = %13.5e m \n", z_target);
     master.print_message("Roughness sublayer ratio (rsl_ratio) = %13.5e \n", rsl_ratio);
 
     if (!sw_chemistry)
@@ -799,13 +801,16 @@ void Chemistry<TF>::calc_c_target(Boundary<TF>& boundary)
         return;
         
     auto& gd = grid.get_grid_data();
-    const TF target_height = z_target;
+    // const TF target_height = z_target;
     
     // Constants for flux calculation (same as in pss function)
     const TF xmair = 28.9647;       // Molar mass of dry air  [kg kmol-1]
     const TF xmair_i = TF(1) / xmair;
     const TF xmnh3 = 17.031;
     const int k = gd.kstart;        // Surface level index
+
+    // Get roughness length from boundary
+    const std::vector<TF>& z0m = boundary.get_z0m();
     
     // Get Obukhov length
     const auto& tiles = boundary.get_tiles();
@@ -825,6 +830,8 @@ void Chemistry<TF>::calc_c_target(Boundary<TF>& boundary)
             // const int ijk1 = i + j * gd.jstride + gd.kstart * gd.ijcells;
             const int ijk1 = i + j * gd.jstride + gd.kstart * gd.kstride;
 
+            // Calculate z_target for this grid point
+            const TF z_target = rsl_ratio * z0m[ij];
             
             // Get concentration at first grid level
             const TF c_1 = fields.sp.at("nh3")->fld[ijk1];
@@ -836,14 +843,14 @@ void Chemistry<TF>::calc_c_target(Boundary<TF>& boundary)
             const TF cstar_fixed = cstar1[ij];
             
             // Calculate scaling factor from z_1 to target height
-            const TF scaling_factor = calc_factor(z_1, target_height, obuk[ij]);
+            const TF scaling_factor = calc_factor(z_1, z_target, obuk[ij]);
             
             // Calculate c_grid_closest: Find closest grid point to target height
             int k_closest = gd.kstart;
-            TF min_distance = std::abs(gd.z[gd.kstart] - target_height);
+            TF min_distance = std::abs(gd.z[gd.kstart] - z_target);
             
             for (int k_grid = gd.kstart; k_grid < gd.kend; ++k_grid) {
-                TF distance = std::abs(gd.z[k_grid] - target_height);
+                TF distance = std::abs(gd.z[k_grid] - z_target);
                 if (distance < min_distance) {
                     min_distance = distance;
                     k_closest = k_grid;
@@ -916,7 +923,7 @@ void Chemistry<TF>::exec(Thermo<TF>& thermo, Boundary<TF>& boundary, double sdt,
             c_target.data(),
             trfa,
             dt, sdt, lifetime,
-            z_target,
+            // z_target,
             rsl_ratio,
             gd.istart, gd.iend,
             gd.jstart, gd.jend,
