@@ -122,11 +122,9 @@ class Chemistry
         const std::string tend_longname = "Chemistry";
         std::vector<TF> cstar1;       // Scaled concentration parameter C*_1
         std::vector<TF> cstar2;       // Simple log formula concentration parameter C*_2  
-        
-        // ADD NEW ARRAYS FOR TARGET HEIGHT CONCENTRATION CALCULATIONS:
-        std::vector<TF> c_grid_closest;   // Actual simulated concentration at closest grid point to the target height
-        std::vector<TF> c_diff_flux;  // Difference flux calculation
         std::vector<TF> c_diff;         // Stability effect on extrapolated concentration (cstar1-cstar2)*factor [ppb]
         std::vector<TF> c_extrap_diff;  // Concentration difference between z_target and first grid level [ppb]
 };
 #endif
+
+

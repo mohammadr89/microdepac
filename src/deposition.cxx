@@ -568,7 +568,15 @@ namespace {
                                     deposition_tiles.at(lu_type).csoil_out.data()[ij] = csoil_out; //Store stomatal conductance (m/s)
 
                                     // Calculate deposition velocity using resistance analogy
-                                    vdnh3[ij] = (TF)1.0 / (ra[ij] + rb + rc_eff);
+				    const TF total_resistance = ra[ij] + rb + rc_eff;
+				    if (std::abs(total_resistance) > (TF)1e-6)
+				    {
+				        vdnh3[ij] = (TF)1.0 / total_resistance;
+				        // Note: vdnh3 can be negative (emission) if total_resistance is negative
+				    } else {
+				        vdnh3[ij] = (TF)0.0;  // Only set to zero if resistance is very close to zero
+				    }
+                                    // vdnh3[ij] = (TF)1.0 / (ra[ij] + rb + rc_eff);
                                 }
                             }
                     }
@@ -673,7 +681,14 @@ namespace {
                                     deposition_tiles.at(lu_type).cstom_out.data()[ij] = cstom_out; //Store stomatal compensation point (ug/m3)
                                     deposition_tiles.at(lu_type).csoil_out.data()[ij] = csoil_out; //Store stomatal conductance (m/s)
 
-                                    vdnh3[ij] = (TF)1.0 / (ra[ij] + rb + rsoil_eff_out);
+				    const TF total_resistance = ra[ij] + rb + rsoil_eff_out;
+				    if (std::abs(total_resistance) > (TF)1e-6)
+				    {
+				        vdnh3[ij] = (TF)1.0 / total_resistance;
+				    } else {
+				        vdnh3[ij] = (TF)0.0;
+				    }
+                                    // vdnh3[ij] = (TF)1.0 / (ra[ij] + rb + rsoil_eff_out);
                                 }
                             }
                     }
@@ -791,14 +806,22 @@ namespace {
                                                 deposition_tiles.at(lu_type).cstom_out.data()[ij] = cstom_out; //Store stomatal compensation point (ug/m3)
                                                 deposition_tiles.at(lu_type).csoil_out.data()[ij] = csoil_out; //Store stomatal conductance (m/s)
 
-                                                vdnh3[ij] = (TF)1.0 / (ra[ij] + rb + rc_eff);
+						const TF total_resistance = ra[ij] + rb + rc_eff;
+						if (std::abs(total_resistance) > (TF)1e-6)
+						{
+						    vdnh3[ij] = (TF)1.0 / total_resistance;
+						} else {
+						    vdnh3[ij] = (TF)0.0;
+						}
+                                                // vdnh3[ij] = (TF)1.0 / (ra[ij] + rb + rc_eff);
                                             }
                                 }
                                 else {
                                     // Wet soil case
                                     const TF rb = (TF)1.0 / (ckarman * ustar[ij]) * diff_scl[0];
-				                    // Added this line to store rb
-				                    deposition_tiles.at(lu_type).rb.data()[ij] = rb;
+
+				    // Added this line to store rb
+				    deposition_tiles.at(lu_type).rb.data()[ij] = rb;
 
                                     depac_wrapper(
                                             compnam,
@@ -848,7 +871,14 @@ namespace {
                                         deposition_tiles.at(lu_type).cstom_out.data()[ij] = cstom_out; //Store stomatal compensation point (ug/m3)
                                         deposition_tiles.at(lu_type).csoil_out.data()[ij] = csoil_out; //Store stomatal conductance (m/s)
 
-                                        vdnh3[ij] = (TF)1.0 / (ra[ij] + rb + rsoil_eff_out);
+					const TF total_resistance = ra[ij] + rb + rsoil_eff_out;
+					if (std::abs(total_resistance) > (TF)1e-6)
+					{
+					    vdnh3[ij] = (TF)1.0 / total_resistance;
+					} else {
+					    vdnh3[ij] = (TF)0.0;
+					}
+                                        // vdnh3[ij] = (TF)1.0 / (ra[ij] + rb + rsoil_eff_out);
                                     }
                                 }
                             }
@@ -1173,7 +1203,7 @@ void Deposition<TF>::init(Input& inputin)
     // f0       = {(TF)1.0, (TF)0.0, (TF)0.1, (TF)0.0, (TF)1.0, (TF)0.1, (TF)0.0};
 
     // Initialize Resistance Arrays for NH3 
-    rmes     = {(TF)0.0};  
+    rmes     = {(TF)0.0};
     rsoil    = {(TF)100.0};
     rcut     = {(TF)1e5};
     rws      = {(TF)10.0};
@@ -1342,14 +1372,14 @@ void Deposition<TF>::update_time_dependent(
     // 'fields' is an object that manages field data (like velocity, pressure, etc.)
 
     // DEBUG: Print every 100 iterations
-    if (timeloop.get_iteration() % 100 == 0)
-    {
-        master.print_message("Iter=%d, Hour=%.3f, sinphi=%.6f, glrad=%.1f W/m2\n", 
-                            timeloop.get_iteration(),
-                            timeloop.calc_hour_of_day(), 
-                            sinphi,
-                            glrad);
-    }
+    // if (timeloop.get_iteration() % 100 == 0)
+    // {
+    //     master.print_message("Iter=%d, Hour=%.3f, sinphi=%.6f, glrad=%.1f W/m2\n", 
+    //                         timeloop.get_iteration(),
+    //                         timeloop.calc_hour_of_day(), 
+    //                         sinphi,
+    //                         glrad);
+    // }
 
     auto tmp2 = fields.get_tmp();
 
@@ -2010,4 +2040,5 @@ void Deposition<TF>::spatial_avg_vd(
 
 template class Deposition<double>;
 //:template class Chemistry<float>;
+
 
