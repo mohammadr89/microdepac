@@ -79,6 +79,10 @@ class Chemistry
         // TF z_target;  // Target height for concentration calculation (from input) - A single scalar value (TF)
         std::vector<TF> c_target;        // Target height concentration (optimal method) - A vector of values (std::vector<TF>)
         TF rsl_ratio; // Roughness sublayer ratio (alpha = z*/h) - Basu & Lacser (2017); Target height is calculated as z_target = rsl_ratio * z0m
+        bool sw_const_ref_height;      // Switch: use constant reference height
+        TF z_fixed;                    // Constant reference height value [m]
+        bool sw_adapt_ref_height;      // Switch: use adaptive extrapolation
+        bool sw_use_lowest_levels;     // Switch: true=use kstart/kstart+1 for cstar | false=use levels bracketing z_target
 
         Field3d_operators<TF> field3d_operators;
 
@@ -116,13 +120,13 @@ class Chemistry
 
         const std::string tend_name = "chemistry";
         const std::string tend_longname = "Chemistry";
-
-        // New arrays for concentration scaling and fluxes
         std::vector<TF> cstar1;       // Scaled concentration parameter C*_1
         std::vector<TF> cstar2;       // Simple log formula concentration parameter C*_2  
         
         // ADD NEW ARRAYS FOR TARGET HEIGHT CONCENTRATION CALCULATIONS:
         std::vector<TF> c_grid_closest;   // Actual simulated concentration at closest grid point to the target height
         std::vector<TF> c_diff_flux;  // Difference flux calculation
+        std::vector<TF> c_diff;         // Stability effect on extrapolated concentration (cstar1-cstar2)*factor [ppb]
+        std::vector<TF> c_extrap_diff;  // Concentration difference between z_target and first grid level [ppb]
 };
 #endif
