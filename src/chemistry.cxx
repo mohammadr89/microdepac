@@ -26,17 +26,12 @@
  * [chemistry]
  * swchemistry  = boolean : Enable/disable chemistry module (default: false)
  * lifetime     = float   : Tracer decay timescale [s] (default: 1e30)
-<<<<<<< Updated upstream
- * z_target     = float   : Target height for concentration extrapolation [m] (required)
- * rsl_ratio    = float   : Roughness sublayer ratio for MO validity (default: 20.0)
-=======
  * c_extrap_diff : Concentration difference between z_target and first grid level [ppb]
  * rsl_ratio    = float   : Roughness sublayer ratio (default: 20.0, only used if sw_const_ref_height=false)
  * sw_const_ref_height = boolean : Use constant reference height (default: true)
  * z_fixed            = float   : Fixed reference height [m] (default: 20, used if sw_const_ref_height=true)
  * sw_adapt_ref_height = boolean : Use adaptive extrapolation method (default: true)
  * sw_use_lowest_levels = boolean : Use kstart/kstart+1 for cstar (true) or bracketing levels (false) (default: true)
->>>>>>> Stashed changes
  * 
  * === INPUTS (NetCDF file: timedep_chem group) ===
  * Photolysis rates: jo31d, jh2o2, jno2, jno3, jn2o5, jch2or, jch2om, jch3o2h
@@ -51,10 +46,6 @@
  * cstar2             : Concentration scaling (neutral) [mol mol-1]
  * c_diff             : Stability effect on extrapolated concentration [ppb]
  * c_target           : NH3 at target height (optimal) [mol mol-1]
-<<<<<<< Updated upstream
- * c_diff_flux        : Concentration difference flux [kg m-2 s-1]
-=======
->>>>>>> Stashed changes
  * chem_budget        : Chemistry budget per layer [molecules cm-3 s-1]
  */
 
@@ -180,32 +171,26 @@ namespace
         TF* restrict total_flux_nh3,
         TF* restrict cstar1,  
         TF* restrict cstar2,  
-<<<<<<< Updated upstream
-        TF* restrict c_target, 
-=======
         TF* restrict c_target,
         TF* restrict c_extrap_diff,
         TF* restrict c_diff,     
->>>>>>> Stashed changes
         TF& trfa,
         const TF dt,
         const TF sdt,
         const TF lifetime,
-        // const TF z_target,
-<<<<<<< Updated upstream
         const TF rsl_ratio,
-=======
+        // const TF z_target,
         const bool sw_const_ref_height,
         const TF z_fixed,              
         const bool sw_adapt_ref_height,
         const bool sw_use_lowest_levels,
->>>>>>> Stashed changes
         const int istart, const int iend,
         const int jstart, const int jend,
         const int kstart, const int kend,
         const int jstride, const int kstride,
         const TF dx,
         const TF dy)
+
     {
         const TF xmh2o = 18.015265;
         const TF xmnh3 = 17.031;
@@ -242,44 +227,24 @@ namespace
     
                     if (k==kstart)
                     {
-                        // Add new concentration scaling calculations
-                        // Get concentrations at two vertical levels (kstart and kstart+1)
                         const int ijk1 = i + j*jstride + kstart*kstride;
-                        const int ijk2 = i + j*jstride + (kstart+1)*kstride;
                         
                         const TF c_1 = nh3[ijk1];
-                        const TF c_2 = nh3[ijk2];
-                        
-                        // Heights at the two levels
                         const TF z_1 = z[kstart];
-                        const TF z_2 = z[kstart+1];
                         
-                        // Obukhov length from surface
-                        const TF L = obuk[ij];
-                        
-                        const TF gradient_factor = calc_factor(z_1, z_2, L);       // For calculating c* from gradient
-                        const TF neutral_factor = calc_factor(z_1, z_2, TF(1e30)); // For neutral atmosphere (no stability)
-                        
-                        // Calculate cstar2 using simple logarithmic formula (no stability correction)
-                        if (std::abs(neutral_factor) > TF(1e-15))
+                        // ========================================
+                        // STEP 1: Determine reference height
+                        // ========================================
+                        TF z_target;
+                        if (sw_const_ref_height)
                         {
-                            cstar2[ij] = +1.0 * (c_2 - c_1) / neutral_factor;
+                            z_target = z_fixed;  // Use constant height
                         }
                         else
                         {
-                            cstar2[ij] = TF(0.0);  // Avoid division by zero
+                            z_target = rsl_ratio * z0m[ij];  // Use adaptive height
                         }
                         
-<<<<<<< Updated upstream
-                        // Calculate cstar1 with stability correction
-                        if (std::abs(gradient_factor) > TF(1e-15))
-                        {
-                            cstar1[ij] = +1.0 * (c_2 - c_1) / gradient_factor;
-                        }
-                        else
-                        {
-                            cstar1[ij] = TF(0.0);  // Add this else clause for safety
-=======
                         // ========================================
                         // STEP 2: Check conditions for SIMPLIFIED method
                         // ========================================
@@ -411,70 +376,19 @@ namespace
                                 else
                                     decay = lti;
                             }
->>>>>>> Stashed changes
                         }
-
-                        const TF z_target = rsl_ratio * z0m[ij];
-
-                        const TF scaling_factor = calc_factor(z_1, z_target, L);
-                        c_target[ij] = c_1 + cstar1[ij] * scaling_factor;
                         
-                        // Check if first grid level is high enough above roughness for MO theory
-                        TF concentration_for_flux;
-                        if (z_1 < rsl_ratio * z0m[ij])
-                        {
-                            // First grid level is too close to surface (inside roughness sublayer)
-                            // MO theory not valid at z_1, so extrapolate upward to z_target
-                            concentration_for_flux = c_target[ij];
-                            
-                            // // Debug print for first grid point only
-                            // if (i == istart && j == jstart)
-                            // {
-                            //     std::printf("Time step: z_1=%.3f < 20*z0m=%.3f -> Using c_target=%.6e\n", z_1, rsl_ratio*z0m[ij], c_target[ij]);
-                            // }
-                        }
-                        else
-                        {
-                            // First grid level is high enough above surface (outside roughness sublayer)
-                            // MO theory already valid at z_1, use concentration directly
-                            c_target[ij] = c_1;  // Update c_target for consistency
-                            concentration_for_flux = c_1;
-                            
-                            // // Debug print for first grid point only
-                            // if (i == istart && j == jstart)
-                            // {
-                            //     std::printf("Time step: z_1=%.3f >= 20*z0m=%.3f -> Using c_1=%.6e\n", z_1, rsl_ratio*z0m[ij], c_1);
-                            // }
-                        }
-
-                        // Calculate and accumulate flux for this RK3 step
-                        // Note: flux is accumulated (+=) and scaled by sdt
-                        
-                        flux_inst[ij] = (-1.0) * vdnh3[ij] * concentration_for_flux * rhoref[k] * xmair_i * xmnh3; // [kg(NH3) m-2 s-1]
-    
-                        // accumulate over sub-timestep for statistics (gets reset periodically)
-                        TF flux = flux_inst[ij] * sdt; // [kg m⁻² s⁻¹] × [s] = [kg m⁻²] Scale by timestep for accumulation     
-                        flux_nh3[ij] += flux;        // For period statistics - Accumulate [kg m⁻²]
-                        
-                        // accumulate total flux (never gets reset)
-                        total_flux_nh3[ij] += flux;  // [kg m⁻²]
-                        
-                        // decay = vdnh3[ij]*dzi[k] + lti;   // 1/s
-                        if (std::abs(nh3[ijk]) > TF(1e-15)) //to prevent division by zero
-                        {
-                            decay = (vdnh3[ij] * dzi[k] * concentration_for_flux / nh3[ijk]) + lti;   // 1/s
-                        }
-                        else
-                        {
-                        decay = lti; // 1/s
-                        }
+                        // Accumulate fluxes 
+                        TF flux = flux_inst[ij] * sdt;
+                        flux_nh3[ij] += flux;
+                        total_flux_nh3[ij] += flux;
                     }
                     else
                     { 
-                        decay = lti; // 1/s
+                        decay = lti;
                     }
-
-                    // update tendencies:
+                    
+                    // Update tendencies
                     tnh3[ijk] -= decay*nh3[ijk];
     
                     // Get statistics for reaction fluxes:
@@ -518,11 +432,6 @@ Chemistry<TF>::Chemistry(
     // Recommended: 50 (z1 > 50*z0), EPA: 20, Wind engineering: 30
     rsl_ratio = inputin.get_item<TF>("chemistry", "rsl_ratio", "", (TF)20.0);
 
-<<<<<<< Updated upstream
-    master.print_message("Lifetime of the tracer:  = %13.5e s \n", lifetime);
-    // master.print_message("Target height z_target = %13.5e m \n", z_target);
-    master.print_message("Roughness sublayer ratio (rsl_ratio) = %13.5e \n", rsl_ratio);
-=======
     sw_const_ref_height = inputin.get_item<bool>("chemistry", "sw_const_ref_height", "", true);
     z_fixed = inputin.get_item<TF>("chemistry", "z_fixed", "", (TF)20);
     sw_adapt_ref_height = inputin.get_item<bool>("chemistry", "sw_adapt_ref_height", "", true);
@@ -536,7 +445,6 @@ Chemistry<TF>::Chemistry(
     if (sw_const_ref_height)
         master.print_message("  Fixed reference height (z_fixed) = %13.5e m \n", z_fixed);
     master.print_message("Use adaptive reference height method = %s \n", sw_adapt_ref_height ? "true" : "false");
->>>>>>> Stashed changes
 
     if (!sw_chemistry)
         return;
@@ -626,7 +534,7 @@ void Chemistry<TF>::exec_stats(const int iteration, const double time, Stats<TF>
         stats.calc_stats_2d("cstar1", cstar1, no_offset);
         stats.calc_stats_2d("cstar2", cstar2, no_offset);
         stats.calc_stats_2d("c_target", c_target, no_offset);
-        stats.calc_stats_2d("c_diff_flux", c_diff_flux, no_offset);
+        stats.calc_stats_2d("c_diff", c_diff, no_offset);
 
 
         // Reset the periodic flux after saving to stats
@@ -704,16 +612,11 @@ void Chemistry<TF>::init(Input& inputin)
     c_target.resize(gd.ijcells);
     std::fill(c_target.begin(), c_target.end(), TF(0));
 
-<<<<<<< Updated upstream
-    c_diff_flux.resize(gd.ijcells);
-    std::fill(c_diff_flux.begin(), c_diff_flux.end(), TF(0));
-=======
     c_extrap_diff.resize(gd.ijcells);
     std::fill(c_extrap_diff.begin(), c_extrap_diff.end(), TF(0));
 
     c_diff.resize(gd.ijcells);
     std::fill(c_diff.begin(), c_diff.end(), TF(0));
->>>>>>> Stashed changes
 
     // Initialize deposition routine
     deposition->init(inputin);
@@ -876,12 +779,8 @@ void Chemistry<TF>::create(
         stats.add_time_series("cstar1", "C*_1 concentration scaling parameter", "mol mol-1", group_named);
         stats.add_time_series("cstar2", "C*_2 concentration scaling parameter", "mol mol-1", group_named);
         stats.add_time_series("c_target", "NH3 concentration at target height (optimal)", "mol mol-1", group_named);
-<<<<<<< Updated upstream
-        stats.add_time_series("c_diff_flux", "Concentration difference flux (c_target - c_grid_closest) × 10^9 × rho × conversion", "kg m-2 s-1", group_named);
-=======
         stats.add_time_series("c_extrap_diff", "Concentration difference between z_target and first grid level", "ppb", group_named);
         stats.add_time_series("c_diff", "Stability effect on extrapolated concentration (cstar1-cstar2)*factor", "ppb", group_named);
->>>>>>> Stashed changes
         stats.add_time_series("total_flux_mol_ha", "NH3 total cumulative flux", "mol ha-1", group_named);
     }
 
@@ -889,12 +788,8 @@ void Chemistry<TF>::create(
     if (cross.get_switch())
     {
         //std::vector<std::string> allowed_crossvars = {"vdnh3"};
-<<<<<<< Updated upstream
-        std::vector<std::string> allowed_crossvars = {"vdnh3","flux_nh3","flux_inst","total_flux_mol_ha","cstar1","cstar2","c_grid_closest","c_target","c_diff_flux"};
-=======
         std::vector<std::string> allowed_crossvars = {"vdnh3","flux_nh3","flux_inst","total_flux_mol_ha","cstar1","cstar2","c_target","c_extrap_diff","c_diff"};
 
->>>>>>> Stashed changes
         cross_list = cross.get_enabled_variables(allowed_crossvars);
 
         // `deposition->create()` only creates cross-sections.
@@ -943,15 +838,10 @@ void Chemistry<TF>::exec_cross(Cross<TF>& cross, unsigned long iotime)
             cross.cross_plane(cstar2.data(), no_offset, name, iotime);
         else if (name == "c_target")
             cross.cross_plane(c_target.data(), no_offset, name, iotime);
-<<<<<<< Updated upstream
-        else if (name == "c_diff_flux")
-            cross.cross_plane(c_diff_flux.data(), no_offset, name, iotime);
-=======
         else if (name == "c_extrap_diff")
             cross.cross_plane(c_extrap_diff.data(), no_offset, name, iotime);
         else if (name == "c_diff")
             cross.cross_plane(c_diff.data(), no_offset, name, iotime);
->>>>>>> Stashed changes
     }
 
     // see if to write per tile:
@@ -987,87 +877,11 @@ void Chemistry<TF>::update_time_dependent(Timeloop<TF>& timeloop, Boundary<TF>& 
 
 #ifndef USECUDA
 
-template<typename TF>
-void Chemistry<TF>::calc_c_target(Boundary<TF>& boundary)
-{
-    if (!sw_chemistry)
-        return;
-        
-    auto& gd = grid.get_grid_data();
-    // const TF target_height = z_target;
-    
-    // Constants for flux calculation (same as in pss function)
-    const TF xmair = 28.9647;       // Molar mass of dry air  [kg kmol-1]
-    const TF xmair_i = TF(1) / xmair;
-    const TF xmnh3 = 17.031;
-    const int k = gd.kstart;        // Surface level index
-
-    // Get roughness length from boundary
-    const std::vector<TF>& z0m = boundary.get_z0m();
-    
-    // Get Obukhov length
-    const auto& tiles = boundary.get_tiles();
-    std::vector<TF> obuk(gd.ijcells, TF(0));
-    
-    for (const auto& tile : tiles) {
-        const auto& tile_data = tile.second;
-        for (int ij = 0; ij < gd.ijcells; ++ij) {
-            obuk[ij] += tile_data.fraction[ij] * tile_data.obuk[ij];
-        }
-    }
-    
-    // Calculate concentrations using FIXED method (existing cstar1)
-    for (int j = gd.jstart; j < gd.jend; ++j) {
-        for (int i = gd.istart; i < gd.iend; ++i) {
-            const int ij = i + j * gd.jstride;
-            // const int ijk1 = i + j * gd.jstride + gd.kstart * gd.ijcells;
-            const int ijk1 = i + j * gd.jstride + gd.kstart * gd.kstride;
-
-            // Calculate z_target for this grid point
-            const TF z_target = rsl_ratio * z0m[ij];
-            
-            // Get concentration at first grid level
-            const TF c_1 = fields.sp.at("nh3")->fld[ijk1];
-            
-            // Get heights
-            const TF z_1 = gd.z[gd.kstart];
-            
-            // Use pre-calculated cstar1 from pss function
-            const TF cstar_fixed = cstar1[ij];
-            
-            // Calculate scaling factor from z_1 to target height
-            const TF scaling_factor = calc_factor(z_1, z_target, obuk[ij]);
-            
-            // Calculate c_grid_closest: Find closest grid point to target height
-            int k_closest = gd.kstart;
-            TF min_distance = std::abs(gd.z[gd.kstart] - z_target);
-            
-            for (int k_grid = gd.kstart; k_grid < gd.kend; ++k_grid) {
-                TF distance = std::abs(gd.z[k_grid] - z_target);
-                if (distance < min_distance) {
-                    min_distance = distance;
-                    k_closest = k_grid;
-                }
-            }
-            
-            // Get actual simulated concentration at closest grid point
-            //const int ijk_closest = i + j * gd.jstride + k_closest * gd.ijcells;
-            const int ijk_closest = i + j * gd.jstride + k_closest * gd.kstride;
-
-            c_grid_closest[ij] = fields.sp.at("nh3")->fld[ijk_closest];
-
-            const TF concentration_diff = c_target[ij] - c_grid_closest[ij];
-            c_diff_flux[ij] = concentration_diff * TF(1e9) * fields.rhoref[k] * xmair_i * xmnh3;
-        }
-    }
-}
-
 // what the following function (exec) does:
 //     Gets atmospheric conditions (temperature, humidity, wind)
 //     Calculates chemical reactions (like NH₃ decay)
 //     Computes surface fluxes (how much NH₃ deposits to ground)
 //     Updates concentrations for the next timestep
-//     Calls our new calc_c_target() to get target height concentrations
 template <typename TF>
 void Chemistry<TF>::exec(Thermo<TF>& thermo, Boundary<TF>& boundary, double sdt, double dt) // Added Boundary parameter to access Obukhov length and z0m
 {
@@ -1114,29 +928,23 @@ void Chemistry<TF>::exec(Thermo<TF>& thermo, Boundary<TF>& boundary, double sdt,
             cstar1.data(),               
             cstar2.data(),
             c_target.data(),
-<<<<<<< Updated upstream
-=======
             c_extrap_diff.data(),
             c_diff.data(),
->>>>>>> Stashed changes
             trfa,
             dt, sdt, lifetime,
             // z_target,
             rsl_ratio,
-<<<<<<< Updated upstream
-=======
             sw_const_ref_height,
             z_fixed,
             sw_adapt_ref_height,
             sw_use_lowest_levels,
->>>>>>> Stashed changes
             gd.istart, gd.iend,
             gd.jstart, gd.jend,
             gd.kstart, gd.kend,
             gd.icells, gd.ijcells,
             gd.dx, gd.dy);
 
-    calc_c_target(boundary);
+    // calc_c_target(boundary);
 
 
     fields.release_tmp(tmp);
@@ -1146,6 +954,3 @@ void Chemistry<TF>::exec(Thermo<TF>& thermo, Boundary<TF>& boundary, double sdt,
 
 template class Chemistry<double>;
 //:template class Chemistry<float>;
-
-
-
