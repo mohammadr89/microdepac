@@ -1173,16 +1173,15 @@ void Deposition<TF>::init(Input& inputin)
     // f0       = {(TF)1.0, (TF)0.0, (TF)0.1, (TF)0.0, (TF)1.0, (TF)0.1, (TF)0.0};
 
     // Initialize Resistance Arrays for NH3 
-    // Modified arrays for NH3 only
-    rmes     = {(TF)0.0};  // NH3
-    rsoil    = {(TF)400.0};  // NH3
-    rcut     = {(TF)1e5};  // NH3
-    rws      = {(TF)2000.0};  // NH3
-    rwat     = {(TF)2000.0};  // NH3
-    diff     = {(TF)0.13};  // NH3
-    diff_scl = {(TF)1.6};  // NH3
-    henry    = {(TF)2e4};  // NH3
-    f0       = {(TF)1.0};  // NH3
+    rmes     = {(TF)0.0};  
+    rsoil    = {(TF)100.0};
+    rcut     = {(TF)1e5};
+    rws      = {(TF)10.0};
+    rwat     = {(TF)10.0};
+    diff     = {(TF)0.13};
+    diff_scl = {(TF)1.0};
+    // henry    = {(TF)2e4};
+    // f0       = {(TF)1.0};
 
     // Define uninitialized resistance values by scaling with O3 and SO2 resistances (Wesely 1989)
     // for (int i=3; i<7; i++)

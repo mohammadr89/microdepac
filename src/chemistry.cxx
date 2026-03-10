@@ -26,8 +26,17 @@
  * [chemistry]
  * swchemistry  = boolean : Enable/disable chemistry module (default: false)
  * lifetime     = float   : Tracer decay timescale [s] (default: 1e30)
+<<<<<<< Updated upstream
  * z_target     = float   : Target height for concentration extrapolation [m] (required)
  * rsl_ratio    = float   : Roughness sublayer ratio for MO validity (default: 20.0)
+=======
+ * c_extrap_diff : Concentration difference between z_target and first grid level [ppb]
+ * rsl_ratio    = float   : Roughness sublayer ratio (default: 20.0, only used if sw_const_ref_height=false)
+ * sw_const_ref_height = boolean : Use constant reference height (default: true)
+ * z_fixed            = float   : Fixed reference height [m] (default: 20, used if sw_const_ref_height=true)
+ * sw_adapt_ref_height = boolean : Use adaptive extrapolation method (default: true)
+ * sw_use_lowest_levels = boolean : Use kstart/kstart+1 for cstar (true) or bracketing levels (false) (default: true)
+>>>>>>> Stashed changes
  * 
  * === INPUTS (NetCDF file: timedep_chem group) ===
  * Photolysis rates: jo31d, jh2o2, jno2, jno3, jn2o5, jch2or, jch2om, jch3o2h
@@ -40,9 +49,12 @@
  * total_flux_mol_ha  : NH3 cumulative flux (total) [mol ha-1]
  * cstar1             : Concentration scaling (with stability) [mol mol-1]
  * cstar2             : Concentration scaling (neutral) [mol mol-1]
- * c_grid_closest     : NH3 at closest grid point to z_target [mol mol-1]
+ * c_diff             : Stability effect on extrapolated concentration [ppb]
  * c_target           : NH3 at target height (optimal) [mol mol-1]
+<<<<<<< Updated upstream
  * c_diff_flux        : Concentration difference flux [kg m-2 s-1]
+=======
+>>>>>>> Stashed changes
  * chem_budget        : Chemistry budget per layer [molecules cm-3 s-1]
  */
 
@@ -168,13 +180,26 @@ namespace
         TF* restrict total_flux_nh3,
         TF* restrict cstar1,  
         TF* restrict cstar2,  
+<<<<<<< Updated upstream
         TF* restrict c_target, 
+=======
+        TF* restrict c_target,
+        TF* restrict c_extrap_diff,
+        TF* restrict c_diff,     
+>>>>>>> Stashed changes
         TF& trfa,
         const TF dt,
         const TF sdt,
         const TF lifetime,
         // const TF z_target,
+<<<<<<< Updated upstream
         const TF rsl_ratio,
+=======
+        const bool sw_const_ref_height,
+        const TF z_fixed,              
+        const bool sw_adapt_ref_height,
+        const bool sw_use_lowest_levels,
+>>>>>>> Stashed changes
         const int istart, const int iend,
         const int jstart, const int jend,
         const int kstart, const int kend,
@@ -245,6 +270,7 @@ namespace
                             cstar2[ij] = TF(0.0);  // Avoid division by zero
                         }
                         
+<<<<<<< Updated upstream
                         // Calculate cstar1 with stability correction
                         if (std::abs(gradient_factor) > TF(1e-15))
                         {
@@ -253,6 +279,139 @@ namespace
                         else
                         {
                             cstar1[ij] = TF(0.0);  // Add this else clause for safety
+=======
+                        // ========================================
+                        // STEP 2: Check conditions for SIMPLIFIED method
+                        // ========================================
+                        // if (z_1 >= z_target || !sw_adapt_ref_height)
+                        // {
+                            // SIMPLIFIED METHOD: Use first grid level directly
+                            // Condition 1: First grid is already above target (regardless of sw_adapt_ref_height)
+                            // OR
+                            // Condition 2: Adaptive method is disabled
+
+                        bool use_simplified;
+                        if (!sw_adapt_ref_height)
+                            use_simplified = true;
+                        else if (sw_const_ref_height)
+                            use_simplified = false;  // always extrapolate to z_fixed for fair comparison
+                        else
+                            use_simplified = (z_1 >= z_target);
+                        
+                        if (use_simplified)
+                        {
+                            c_target[ij]      = c_1;
+                            cstar1[ij]        = TF(0);
+                            cstar2[ij]        = TF(0);
+                            c_diff[ij]        = TF(0);
+                            c_extrap_diff[ij] = TF(0);
+
+                            // Calculate instantaneous flux using first grid level concentration (SIMPLIFIED)
+                            flux_inst[ij] = (-1.0) * vdnh3[ij] * nh3[ijk] * rhoref[k] * xmair_i * xmnh3; // [kg(NH3) m-2 s-1]
+                            
+                            decay = vdnh3[ij]*dzi[k] + lti;   // 1/s (SIMPLIFIED - no concentration scaling)
+                        }
+                        else
+                        {
+                            // ========================================
+                            // STEP 3: ADAPTIVE METHOD with extrapolation
+                            // Only reaches here if: z_1 < z_target AND sw_adapt_ref_height == true
+                            // ========================================
+                            
+                            // Get second level concentration
+                            const int ijk2 = i + j*jstride + (kstart+1)*kstride;
+                            const TF c_2 = nh3[ijk2];
+                            
+                            // Heights at the two levels
+                            const TF z_2 = z[kstart+1];
+                            
+                            // Obukhov length from surface
+                            const TF L = obuk[ij];
+                            
+                            // ========================================
+                            // Determine which levels to use for cstar
+                            // ========================================
+                            int k_below, k_above;
+                            if (sw_use_lowest_levels)
+                            {
+                                // Always use the two lowest levels
+                                k_below = kstart;
+                                k_above = kstart + 1;
+                            }
+                            else
+                            {
+                                // Use levels bracketing z_target
+                                k_below = kstart;
+                                k_above = kstart + 1;
+                                for (int k_grid = kstart; k_grid < kend - 1; ++k_grid)
+                                {
+                                    if (z[k_grid] < z_target)
+                                    {
+                                        k_below = k_grid;
+                                        k_above = k_grid + 1;
+                                    }
+                                    else break;
+                                }
+                            }
+                            
+                            
+                            const int ijk_below = i + j*jstride + k_below*kstride;
+                            const int ijk_above = i + j*jstride + k_above*kstride;
+                            const TF c_below = nh3[ijk_below];
+                            const TF c_above = nh3[ijk_above];
+
+                            // ========================================
+                            // Check if a grid level sits exactly at z_target
+                            // ========================================
+                            if (std::abs(z[k_below] - z_target) < TF(0.5) || std::abs(z[k_above] - z_target) < TF(0.5))
+                            {
+                                int k_exact = (std::abs(z[k_above] - z_target) < std::abs(z[k_below] - z_target))
+                                              ? k_above : k_below;
+                                const int ijk_exact = i + j*jstride + k_exact*kstride;
+                                c_target[ij]      = nh3[ijk_exact];
+                                cstar1[ij]        = TF(0);
+                                cstar2[ij]        = TF(0);
+                                c_diff[ij]        = TF(0);
+                                c_extrap_diff[ij] = (c_target[ij] - c_1) * TF(1e9); 
+                                flux_inst[ij] = (-1.0) * vdnh3[ij] * c_target[ij] * rhoref[k] * xmair_i * xmnh3;
+                                if (std::abs(nh3[ijk]) > TF(1e-15))
+                                    decay = (vdnh3[ij] * dzi[k] * c_target[ij] / nh3[ijk]) + lti;
+                                else
+                                    decay = lti;
+                            }
+                            else
+                            {
+                                // Calculate cstar1 (with stability) and cstar2 (neutral)
+                                const TF gradient_factor = calc_factor(z[k_below], z[k_above], L);
+                                const TF neutral_factor  = calc_factor(z[k_below], z[k_above], TF(1e30));
+                                
+                                cstar1[ij] = (std::abs(gradient_factor) > TF(1e-15)) ?
+                                    (c_above - c_below) / gradient_factor : TF(0);
+                                
+                                cstar2[ij] = (std::abs(neutral_factor) > TF(1e-15)) ?
+                                    (c_above - c_below) / neutral_factor  : TF(0);
+                                
+                                // Extrapolate c_target to z_target using cstar1
+                                const TF scaling_factor = calc_factor(z[k_below], z_target, L);
+                                c_target[ij] = c_below + cstar1[ij] * scaling_factor;
+
+                                c_extrap_diff[ij] = (c_target[ij] - c_1) * TF(1e9);
+
+                                
+                                // c_diff: effect of stability correction [ppb]
+                                const TF scaling_factor_neutral = calc_factor(z[k_below], z_target, TF(1e30));
+                                c_diff[ij] = (cstar1[ij] - cstar2[ij]) * scaling_factor_neutral * TF(1e9);
+                                
+                                // Calculate flux using c_target
+                                flux_inst[ij] = (-1.0) * vdnh3[ij] * c_target[ij] * rhoref[k] * xmair_i * xmnh3;
+                                
+                                // Calculate decay with concentration scaling
+                                if (std::abs(nh3[ijk]) > TF(1e-15))
+                                    decay = (vdnh3[ij] * dzi[k] * c_target[ij] / nh3[ijk]) + lti;
+                                else
+                                    decay = lti;
+                            }
+>>>>>>> Stashed changes
                         }
 
                         const TF z_target = rsl_ratio * z0m[ij];
@@ -359,9 +518,25 @@ Chemistry<TF>::Chemistry(
     // Recommended: 50 (z1 > 50*z0), EPA: 20, Wind engineering: 30
     rsl_ratio = inputin.get_item<TF>("chemistry", "rsl_ratio", "", (TF)20.0);
 
+<<<<<<< Updated upstream
     master.print_message("Lifetime of the tracer:  = %13.5e s \n", lifetime);
     // master.print_message("Target height z_target = %13.5e m \n", z_target);
     master.print_message("Roughness sublayer ratio (rsl_ratio) = %13.5e \n", rsl_ratio);
+=======
+    sw_const_ref_height = inputin.get_item<bool>("chemistry", "sw_const_ref_height", "", true);
+    z_fixed = inputin.get_item<TF>("chemistry", "z_fixed", "", (TF)20);
+    sw_adapt_ref_height = inputin.get_item<bool>("chemistry", "sw_adapt_ref_height", "", true);
+    sw_use_lowest_levels = inputin.get_item<bool>("chemistry", "sw_use_lowest_levels", "", true);
+    master.print_message("Use lowest levels for cstar = %s \n", sw_use_lowest_levels ? "true" : "false");
+
+    master.print_message("Lifetime of the tracer:  = %13.5e s \n", lifetime);
+    // master.print_message("Target height z_target = %13.5e m \n", z_target);
+    master.print_message("Roughness sublayer ratio (rsl_ratio) = %13.5e \n", rsl_ratio);
+    master.print_message("Use constant reference height = %s \n", sw_const_ref_height ? "true" : "false");
+    if (sw_const_ref_height)
+        master.print_message("  Fixed reference height (z_fixed) = %13.5e m \n", z_fixed);
+    master.print_message("Use adaptive reference height method = %s \n", sw_adapt_ref_height ? "true" : "false");
+>>>>>>> Stashed changes
 
     if (!sw_chemistry)
         return;
@@ -444,13 +619,12 @@ void Chemistry<TF>::exec_stats(const int iteration, const double time, Stats<TF>
                 total_flux_mol_ha[ij] = total_flux_nh3[ij] * xmnh3_i * m2_to_ha * 1.0e3;  // [kg m⁻²] → [mol ha⁻¹]
             }
         
+        stats.calc_stats_2d("c_extrap_diff", c_extrap_diff, no_offset);
         stats.calc_stats_2d("total_flux_mol_ha", total_flux_mol_ha, no_offset);  // Total [mol ha⁻¹]
-
 
         // Calculate statistics for new variables
         stats.calc_stats_2d("cstar1", cstar1, no_offset);
         stats.calc_stats_2d("cstar2", cstar2, no_offset);
-        stats.calc_stats_2d("c_grid_closest", c_grid_closest, no_offset);
         stats.calc_stats_2d("c_target", c_target, no_offset);
         stats.calc_stats_2d("c_diff_flux", c_diff_flux, no_offset);
 
@@ -526,15 +700,20 @@ void Chemistry<TF>::init(Input& inputin)
     cstar2.resize(gd.ijcells);
     std::fill(cstar2.begin(), cstar2.end(), TF(0));  // Initialize with zeros
     
-    c_grid_closest.resize(gd.ijcells);
-    std::fill(c_grid_closest.begin(), c_grid_closest.end(), TF(0));
-
     // Only one concentration array needed now (optimal method)
     c_target.resize(gd.ijcells);
     std::fill(c_target.begin(), c_target.end(), TF(0));
 
+<<<<<<< Updated upstream
     c_diff_flux.resize(gd.ijcells);
     std::fill(c_diff_flux.begin(), c_diff_flux.end(), TF(0));
+=======
+    c_extrap_diff.resize(gd.ijcells);
+    std::fill(c_extrap_diff.begin(), c_extrap_diff.end(), TF(0));
+
+    c_diff.resize(gd.ijcells);
+    std::fill(c_diff.begin(), c_diff.end(), TF(0));
+>>>>>>> Stashed changes
 
     // Initialize deposition routine
     deposition->init(inputin);
@@ -696,9 +875,13 @@ void Chemistry<TF>::create(
         //stats.add_time_series("flux_nh3", "NH3 surface flux", "mol(NH3) m-2 s-1", group_named);
         stats.add_time_series("cstar1", "C*_1 concentration scaling parameter", "mol mol-1", group_named);
         stats.add_time_series("cstar2", "C*_2 concentration scaling parameter", "mol mol-1", group_named);
-        stats.add_time_series("c_grid_closest", "NH3 concentration at closest grid point to 20m", "mol mol-1", group_named);
         stats.add_time_series("c_target", "NH3 concentration at target height (optimal)", "mol mol-1", group_named);
+<<<<<<< Updated upstream
         stats.add_time_series("c_diff_flux", "Concentration difference flux (c_target - c_grid_closest) × 10^9 × rho × conversion", "kg m-2 s-1", group_named);
+=======
+        stats.add_time_series("c_extrap_diff", "Concentration difference between z_target and first grid level", "ppb", group_named);
+        stats.add_time_series("c_diff", "Stability effect on extrapolated concentration (cstar1-cstar2)*factor", "ppb", group_named);
+>>>>>>> Stashed changes
         stats.add_time_series("total_flux_mol_ha", "NH3 total cumulative flux", "mol ha-1", group_named);
     }
 
@@ -706,7 +889,12 @@ void Chemistry<TF>::create(
     if (cross.get_switch())
     {
         //std::vector<std::string> allowed_crossvars = {"vdnh3"};
+<<<<<<< Updated upstream
         std::vector<std::string> allowed_crossvars = {"vdnh3","flux_nh3","flux_inst","total_flux_mol_ha","cstar1","cstar2","c_grid_closest","c_target","c_diff_flux"};
+=======
+        std::vector<std::string> allowed_crossvars = {"vdnh3","flux_nh3","flux_inst","total_flux_mol_ha","cstar1","cstar2","c_target","c_extrap_diff","c_diff"};
+
+>>>>>>> Stashed changes
         cross_list = cross.get_enabled_variables(allowed_crossvars);
 
         // `deposition->create()` only creates cross-sections.
@@ -753,12 +941,17 @@ void Chemistry<TF>::exec_cross(Cross<TF>& cross, unsigned long iotime)
             cross.cross_plane(cstar1.data(), no_offset, name, iotime);
         else if (name == "cstar2")
             cross.cross_plane(cstar2.data(), no_offset, name, iotime);
-        else if (name == "c_grid_closest")
-            cross.cross_plane(c_grid_closest.data(), no_offset, name, iotime);
         else if (name == "c_target")
             cross.cross_plane(c_target.data(), no_offset, name, iotime);
+<<<<<<< Updated upstream
         else if (name == "c_diff_flux")
             cross.cross_plane(c_diff_flux.data(), no_offset, name, iotime);
+=======
+        else if (name == "c_extrap_diff")
+            cross.cross_plane(c_extrap_diff.data(), no_offset, name, iotime);
+        else if (name == "c_diff")
+            cross.cross_plane(c_diff.data(), no_offset, name, iotime);
+>>>>>>> Stashed changes
     }
 
     // see if to write per tile:
@@ -921,10 +1114,22 @@ void Chemistry<TF>::exec(Thermo<TF>& thermo, Boundary<TF>& boundary, double sdt,
             cstar1.data(),               
             cstar2.data(),
             c_target.data(),
+<<<<<<< Updated upstream
+=======
+            c_extrap_diff.data(),
+            c_diff.data(),
+>>>>>>> Stashed changes
             trfa,
             dt, sdt, lifetime,
             // z_target,
             rsl_ratio,
+<<<<<<< Updated upstream
+=======
+            sw_const_ref_height,
+            z_fixed,
+            sw_adapt_ref_height,
+            sw_use_lowest_levels,
+>>>>>>> Stashed changes
             gd.istart, gd.iend,
             gd.jstart, gd.jend,
             gd.kstart, gd.kend,
