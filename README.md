@@ -1,3 +1,30 @@
+# MicroHH-DEPAC: Coupling of MicroHH with the DEPAC Dry Deposition Module
+
+This repository contains a modified version of MicroHH with an integrated DEPAC 
+dry deposition module for NH₃ surface-atmosphere exchange. The coupling is 
+described in detail in:
+
+> Rashidi, M., Krol, M. C., and van Zanten, M. C.: Coupling of MicroHH large 
+> eddy simulation with DEPAC dry deposition module, Geoscientific Model 
+> Development, in preparation, 2025.
+
+## What was added
+- `src/deposition.cxx` and `include/deposition.h`: DEPAC-based NH₃ deposition scheme
+- `depac_lib/wrapper_depac.f90`: Fortran wrapper for C++/Fortran language coupling
+- `depac_lib/le_drydepos_gas_depac.f90`: DEPAC deposition module
+- `depac_lib/go.f90`: Supporting Fortran utilities
+- Modified `CMakeLists.txt` (root and `src/`) for mixed-language compilation
+
+## Additional requirements for DEPAC integration
+In addition to the standard MicroHH requirements listed below:
+- gfortran (or compatible Fortran compiler)
+- Fortran standard library (linked via `-lgfortran`)
+
+## Compilation with DEPAC
+Follow the standard MicroHH compilation instructions below. The DEPAC library 
+is compiled automatically as part of the build process
+
+--------------------------------------------------------------------------------------------------
 MicroHH
 -------
 [![Documentation Status](https://readthedocs.org/projects/microhh/badge/?version=latest)](https://microhh.readthedocs.io/en/latest/?badge=latest)
