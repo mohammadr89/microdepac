@@ -47,6 +47,8 @@
  * c_diff             : Stability effect on extrapolated concentration [ppb]
  * c_target           : NH3 at target height (optimal) [mol mol-1]
  * chem_budget        : Chemistry budget per layer [molecules cm-3 s-1]
+ * T_target           : Temperature at target height [K]
+ * rho_target         : Air density at target height [kg m-3]
  */
 
 //#include <cstdio>
@@ -173,7 +175,10 @@ namespace
         TF* restrict cstar2,  
         TF* restrict c_target,
         TF* restrict c_extrap_diff,
-        TF* restrict c_diff,     
+        TF* restrict c_diff,
+        TF* restrict T_target,
+        TF* restrict rho_target,
+        const TF* const restrict T_fld,
         TF& trfa,
         const TF dt,
         const TF sdt,
@@ -270,6 +275,8 @@ namespace
                             cstar2[ij]        = TF(0);
                             c_diff[ij]        = TF(0);
                             c_extrap_diff[ij] = TF(0);
+                            T_target[ij]      = T_fld[i + j*jstride + kstart*kstride];
+                            rho_target[ij]    = rhoref[kstart];
 
                             // Calculate instantaneous flux using first grid level concentration (SIMPLIFIED)
                             flux_inst[ij] = (-1.0) * vdnh3[ij] * nh3[ijk] * rhoref[k] * xmair_i * xmnh3; // [kg(NH3) m-2 s-1]
@@ -337,8 +344,11 @@ namespace
                                 cstar1[ij]        = TF(0);
                                 cstar2[ij]        = TF(0);
                                 c_diff[ij]        = TF(0);
-                                c_extrap_diff[ij] = (c_target[ij] - c_1) * TF(1e9); 
-                                flux_inst[ij] = (-1.0) * vdnh3[ij] * c_target[ij] * rhoref[k] * xmair_i * xmnh3;
+                                c_extrap_diff[ij] = (c_target[ij] - c_1) * TF(1e9);
+                                T_target[ij]      = T_fld[i + j*jstride + k_exact*kstride];
+                                rho_target[ij]    = rhoref[k_exact];
+                                const TF rhoref_exact = rhoref[k_exact];
+                                flux_inst[ij] = (-1.0) * vdnh3[ij] * c_target[ij] * rhoref_exact * xmair_i * xmnh3;
                                 if (std::abs(nh3[ijk]) > TF(1e-15))
                                     decay = (vdnh3[ij] * dzi[k] * c_target[ij] / nh3[ijk]) + lti;
                                 else
@@ -368,7 +378,14 @@ namespace
                                 c_diff[ij] = (cstar1[ij] - cstar2[ij]) * scaling_factor_neutral * TF(1e9);
                                 
                                 // Calculate flux using c_target
-                                flux_inst[ij] = (-1.0) * vdnh3[ij] * c_target[ij] * rhoref[k] * xmair_i * xmnh3;
+                                const TF rhoref_target = rhoref[k_below]
+                                    + (z_target - z[k_below]) / (z[k_above] - z[k_below])
+                                    * (rhoref[k_above] - rhoref[k_below]);
+                                rho_target[ij] = rhoref_target;
+                                T_target[ij] = T_fld[i + j*jstride + k_below*kstride]
+                                    + (z_target - z[k_below]) / (z[k_above] - z[k_below])
+                                    * (T_fld[i + j*jstride + k_above*kstride] - T_fld[i + j*jstride + k_below*kstride]);
+                                flux_inst[ij] = (-1.0) * vdnh3[ij] * c_target[ij] * rhoref_target * xmair_i * xmnh3;
                                 
                                 // Calculate decay with concentration scaling
                                 if (std::abs(nh3[ijk]) > TF(1e-15))
@@ -535,6 +552,8 @@ void Chemistry<TF>::exec_stats(const int iteration, const double time, Stats<TF>
         stats.calc_stats_2d("cstar2", cstar2, no_offset);
         stats.calc_stats_2d("c_target", c_target, no_offset);
         stats.calc_stats_2d("c_diff", c_diff, no_offset);
+        stats.calc_stats_2d("T_target", T_target, no_offset);
+        stats.calc_stats_2d("rho_target", rho_target, no_offset);
 
 
         // Reset the periodic flux after saving to stats
@@ -617,6 +636,12 @@ void Chemistry<TF>::init(Input& inputin)
 
     c_diff.resize(gd.ijcells);
     std::fill(c_diff.begin(), c_diff.end(), TF(0));
+
+    T_target.resize(gd.ijcells);
+    std::fill(T_target.begin(), T_target.end(), TF(0));
+
+    rho_target.resize(gd.ijcells);
+    std::fill(rho_target.begin(), rho_target.end(), TF(0));
 
     // Initialize deposition routine
     deposition->init(inputin);
@@ -782,13 +807,15 @@ void Chemistry<TF>::create(
         stats.add_time_series("c_extrap_diff", "Concentration difference between z_target and first grid level", "ppb", group_named);
         stats.add_time_series("c_diff", "Stability effect on extrapolated concentration (cstar1-cstar2)*factor", "ppb", group_named);
         stats.add_time_series("total_flux_mol_ha", "NH3 total cumulative flux", "mol ha-1", group_named);
+        stats.add_time_series("T_target", "Temperature at target height", "K", group_named);
+        stats.add_time_series("rho_target", "Air density at target height", "kg m-3", group_named);
     }
 
     // add cross-sections
     if (cross.get_switch())
     {
         //std::vector<std::string> allowed_crossvars = {"vdnh3"};
-        std::vector<std::string> allowed_crossvars = {"vdnh3","flux_nh3","flux_inst","total_flux_mol_ha","cstar1","cstar2","c_target","c_extrap_diff","c_diff"};
+        std::vector<std::string> allowed_crossvars = {"vdnh3","flux_nh3","flux_inst","total_flux_mol_ha","cstar1","cstar2","c_target","c_extrap_diff","c_diff","T_target","rho_target"};
 
         cross_list = cross.get_enabled_variables(allowed_crossvars);
 
@@ -842,6 +869,10 @@ void Chemistry<TF>::exec_cross(Cross<TF>& cross, unsigned long iotime)
             cross.cross_plane(c_extrap_diff.data(), no_offset, name, iotime);
         else if (name == "c_diff")
             cross.cross_plane(c_diff.data(), no_offset, name, iotime);
+        else if (name == "T_target")
+            cross.cross_plane(T_target.data(), no_offset, name, iotime);
+        else if (name == "rho_target")
+            cross.cross_plane(rho_target.data(), no_offset, name, iotime);
     }
 
     // see if to write per tile:
@@ -930,6 +961,9 @@ void Chemistry<TF>::exec(Thermo<TF>& thermo, Boundary<TF>& boundary, double sdt,
             c_target.data(),
             c_extrap_diff.data(),
             c_diff.data(),
+            T_target.data(),
+            rho_target.data(),
+            tmp->fld.data(),
             trfa,
             dt, sdt, lifetime,
             // z_target,
