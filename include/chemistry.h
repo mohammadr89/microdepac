@@ -124,7 +124,7 @@ class Chemistry
         std::vector<TF> cstar2;       // Simple log formula concentration parameter C*_2  
         std::vector<TF> c_diff;         // Stability effect on extrapolated concentration (cstar1-cstar2)*factor [ppb]
         std::vector<TF> c_extrap_diff;  // Concentration difference between z_target and first grid level [ppb]
+        std::vector<TF> T_target;       // Temperature at target height [K]
+        std::vector<TF> rho_target;     // Air density at target height [kg m-3]
 };
 #endif
-
-
