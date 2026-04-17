@@ -151,7 +151,8 @@ private:
     TF c_ug;  // Synchronized conversion factor for NH3
     TF pressure;        // Pressure (Pa)
 
-    std::vector<TF> land_use_type;
+    //std::vector<TF> land_use_type;
+    std::vector<int> lu_map;  // per-cell DEPAC land use type read from lu_map.0000000
 
     // Tile management
     std::vector<std::string> deposition_tile_names {"veg", "soil", "wet"};
