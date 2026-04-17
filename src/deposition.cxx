@@ -84,19 +84,21 @@
 #include "grid.h"
 #include "master.h"
 #include "netcdf_interface.h"
+#include <cmath>
 #include "radiation.h"
+#include "radiation_prescribed.h"
+#include "radiation_rrtmgp_functions.h"
 #include "stats.h"
 #include "thermo.h"
 #include "timeloop.h"
 #include <algorithm>
 #include <cstdio>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <math.h>
 #include <sstream>
 #include <utility>
-#include "radiation_rrtmgp_functions.h"
-#include "radiation_prescribed.h"
 
 
 // Added: C linkage for DEPAC Fortran wrapper
@@ -410,6 +412,7 @@ namespace {
                 const int istart, const int iend,
                 const int jstart, const int jend,
                 const int jj,
+                const int* const restrict lu_map,
                 const int kstart,
                 const int ijcells)
                 {
@@ -445,16 +448,13 @@ namespace {
 
                                 if (fraction[ij] < (TF)1e-12)
                                     continue;
-                                int local_lu;
-                                TF local_sai;
 
-                                if (lai[ij] <= 3.5) {
-                                    local_lu = 1;  // grass
-                                    local_sai = lai[ij];  // For grass, SAI = LAI
-                                } else {
-                                    local_lu = 5;  // deciduous forest
-                                    local_sai = lai[ij] + 1.0;  // For forest, add stem area
-                                }
+                                // Read lu directly from map — no LAI threshold guessing
+                                const int local_lu = lu_map[ij];
+
+                                // Forest types in DEPAC: 4=coniferous, 5=deciduous, 12=tropical
+                                const bool is_forest = (local_lu == 4 || local_lu == 5 || local_lu == 12);
+                                const TF local_sai   = is_forest ? lai[ij] + TF(1.0) : lai[ij];
 
                                 // Keep IFS Ra and use vegetation Rb scaling
                                 const TF rb = TF(2.0) / (ckarman * ustar[ij]) * diff_scl[0];
@@ -739,16 +739,14 @@ namespace {
                                 }
 
                                 if (c_veg[ij] > 0) {
-                                    // NEW: Added same LAI-based determination for wet vegetation
-                                    int local_lu;
-                                    TF local_sai;
-                                    if (lai[ij] <= 3.5) {
-                                        local_lu = 1;  // grass
-                                        local_sai = lai[ij];  // For grass, SAI = LAI
-                                    } else {
-                                        local_lu = 5;  // deciduous forest
-                                        local_sai = lai[ij] + 1.0;  // For forest, add stem area
-                                    }
+
+                                    // Read lu directly from map — no LAI threshold guessing
+                                    const int local_lu = lu_map[ij];
+                                    
+                                    // Forest types in DEPAC: 4=coniferous, 5=deciduous, 12=tropical
+                                    const bool is_forest = (local_lu == 4 || local_lu == 5 || local_lu == 12);
+                                    const TF local_sai   = is_forest ? lai[ij] + TF(1.0) : lai[ij];
+
                                     // Wet vegetation case
 
                                     const TF rb = TF(2.0) / (ckarman * ustar[ij]) * diff_scl[0];
@@ -935,6 +933,7 @@ namespace {
             const int istart, const int iend,
             const int jstart, const int jend,
             const int jj,
+            const int* const restrict lu_map,
             const int kstart,
             const int ijcells)
     {
@@ -982,6 +981,7 @@ namespace {
                     istart, iend,
                     jstart, jend,
                     jj,
+                    lu_map,
                     kstart,
                     ijcells);
         } else {
@@ -1112,6 +1112,35 @@ void Deposition<TF>::init(Input& inputin)
 
     if (!sw_deposition)
         return;
+
+    if (use_depac)
+    {
+        // Read per-cell DEPAC land use map from binary file written by plume_chem_input.py.
+        // lu_map.0000000 contains one integer per cell: 1=grass, 4=coniferous, 5=deciduous etc.
+        auto& gd = grid.get_grid_data();
+        lu_map.resize(gd.ijcells);
+
+        std::string lu_map_file = "lu_map.0000000";
+        std::ifstream file(lu_map_file, std::ios::binary);
+        if (!file)
+            throw std::runtime_error("Cannot open " + lu_map_file);
+
+        // File is written as float64 (float_type = "f8" in Python)
+        std::vector<double> buf(gd.imax * gd.jmax);
+        file.read(reinterpret_cast<char*>(buf.data()), buf.size() * sizeof(double));
+        file.close();
+
+        // Copy into lu_map — only interior cells (istart:iend, jstart:jend)
+        for (int j = gd.jstart; j < gd.jend; ++j)
+            for (int i = gd.istart; i < gd.iend; ++i)
+            {
+                const int ij     = i + j * gd.icells;
+                const int ij_buf = (i - gd.istart) + (j - gd.jstart) * gd.imax;
+                lu_map[ij] = static_cast<int>(buf[ij_buf]);
+            }
+
+        master.print_message("Deposition: read lu_map from %s\n", lu_map_file.c_str());
+    }
 
     // Get Grid Data Reference
     auto& gd = grid.get_grid_data();
@@ -1568,6 +1597,7 @@ void Deposition<TF>::update_time_dependent(
                 gd.istart, gd.iend,
                 gd.jstart, gd.jend,
                 gd.icells,
+                lu_map.data(),
                 gd.kstart,           // Added this
                 gd.ijcells);         // added this
     }
