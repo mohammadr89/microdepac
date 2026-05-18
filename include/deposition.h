@@ -21,25 +21,26 @@ template<typename> class Radiation;
 template<typename> class Chemistry;
 enum class Deposition_type {disabled, enabled, simple, average};
 template<typename TF>
+
 struct Deposition_tile
 {
     std::string long_name;
-    std::vector<TF> vdnh3;
-    std::vector<TF> ra;
-    std::vector<TF> rb;
-    std::vector<TF> T_surface;
-    std::vector<TF> rh_surface;
-    std::vector<TF> obuk;
-    std::vector<TF> ustar;
-    std::vector<TF> ccomp_tot;
-    std::vector<TF> cw;
-    std::vector<TF> cstom;
-    std::vector<TF> csoil_eff;
-    std::vector<TF> cw_out;
-    std::vector<TF> cstom_out;
-    std::vector<TF> csoil_out;
-    std::vector<TF> rc_tot;
-    std::vector<TF> rc_eff;
+    std::vector<TF> vdnh3;       // exchange velocity v_e [m s-1]
+    std::vector<TF> ra;          // aerodynamic resistance R_a [s m-1]
+    std::vector<TF> rb;          // quasi-laminar boundary-layer resistance R_b [s m-1]
+    std::vector<TF> T_surface;   // surface skin temperature [K]
+    std::vector<TF> rh_surface;  // surface relative humidity [%]
+    std::vector<TF> obuk;        // Obukhov length L [m]
+    std::vector<TF> ustar;       // friction velocity u_* [m s-1]
+    std::vector<TF> ccomp_tot;   // total canopy compensation point chi_c [ug m-3] 
+    std::vector<TF> cw;          // external leaf surface compensation point chi_w [ug m-3] 
+    std::vector<TF> cstom;       // stomatal compensation point chi_stom [ug m-3] 
+    std::vector<TF> csoil_eff;   // effective soil compensation point chi_soil,eff [ug m-3]
+    std::vector<TF> cw_out;      // chi_w returned by DEPAC [ug m-3]
+    std::vector<TF> cstom_out;   // chi_stom returned by DEPAC [ug m-3]
+    std::vector<TF> csoil_out;   // chi_soil,eff returned by DEPAC [ug m-3]
+    std::vector<TF> rc_tot;      // total canopy resistance R_c,tot [s m-1]
+    std::vector<TF> rc_eff;      // effective canopy resistance R_c,eff [s m-1]
 };
 
 template<typename TF>
@@ -118,9 +119,9 @@ class Deposition
     int iratns;
     TF hlaw;
     TF react;
-    TF c_ave_prev_nh3;
-    TF catm;
-    TF c_ug;
+    TF c_ave_prev_nh3;  // long-term average atmospheric NH3 concentration C_ave,prev [ug m-3]
+    TF catm;            // atmospheric NH3 concentration chi_a passed to DEPAC [ug m-3]
+    TF c_ug;            // unit conversion factor: mol mol-1 to ug m-3 (rho * M_NH3 / M_air)
     TF pressure;
     std::vector<int> lu_map;
     std::vector<std::string> deposition_tile_names {"veg", "soil", "wet"};

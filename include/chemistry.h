@@ -69,14 +69,14 @@ class Chemistry
     bool sw_chemistry;
     TF lifetime;
     std::vector<TF> c_target;
-    TF rsl_ratio; // Roughness sublayer ratio (alpha = z*/h) - Basu & Lacser (2017); Target height is calculated as z_target = rsl_ratio * z0m
+    TF rsl_ratio; // Roughness sublayer ratio (alpha = z*/h_c) - Basu & Lacser (2017); reference height z_ref >= rsl_ratio * z0m
     bool sw_const_ref_height;
     TF z_fixed;
     bool sw_adapt_ref_height;
     bool sw_use_lowest_levels;
     Field3d_operators<TF> field3d_operators;
     std::shared_ptr<Deposition<TF>> deposition;
-    Mask<TF> m;     // borrow from Stats to gather statistics chemistry
+    Mask<TF> m;     // borrow from Stats to gather chemistry statistics
     int statistics_counter;
     std::vector<std::string> jname={"jo31d","jh2o2","jno2","jno3","jn2o5","jch2or","jch2om","jch3o2h"};
     std::vector<std::string> ename={"emi_isop","emi_no"};

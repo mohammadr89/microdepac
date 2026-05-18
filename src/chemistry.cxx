@@ -26,7 +26,6 @@
  * [chemistry]
  * swchemistry  = boolean : Enable/disable chemistry module (default: false)
  * lifetime     = float   : Tracer decay timescale [s] (default: 1e30)
- * c_extrap_diff : Concentration difference between z_target and first grid level [ppb]
  * rsl_ratio    = float   : Roughness sublayer ratio (default: 20.0, only used if sw_const_ref_height=false)
  * sw_const_ref_height = boolean : Use constant reference height (default: true)
  * z_fixed            = float   : Fixed reference height [m] (default: 20, used if sw_const_ref_height=true)
@@ -39,13 +38,14 @@
  * All with time dimension: time_chem*
  * 
  * === OUTPUTS (Statistics) ===
- * vdnh3              : NH3 deposition velocity [m s-1]
- * flux_inst          : Instantaneous NH3 flux [kg m-2 s-1]
+ * vdnh3              : NH3 exchange velocity [m s-1] (equals deposition velocity v_d when compensation points are absent)
+ * flux_inst          : Instantaneous NH3 surface mass flux [kg m-2 s-1]
  * total_flux_mol_ha  : NH3 cumulative flux (total) [mol ha-1]
  * cstar1             : Concentration scaling (with stability) [mol mol-1]
  * cstar2             : Concentration scaling (neutral) [mol mol-1]
- * c_diff             : Stability effect on extrapolated concentration [ppb]
- * c_target           : NH3 at target height (optimal) [mol mol-1]
+ * c_diff             : Stability correction effect on interpolated mole fraction: (cstar1-cstar2)*factor [nmol mol-1]
+ * c_extrap_diff      : Mole fraction difference between z_ref and lowest model level z_low [nmol mol-1]
+ * c_target           : NH3 mole fraction at reference height z_ref [mol mol-1]
  * chem_budget        : Chemistry budget per layer [molecules cm-3 s-1]
  * T_target           : Temperature at target height [K]
  * rho_target         : Air density at target height [kg m-3]
@@ -93,7 +93,6 @@ inline TF calc_factor(const TF z1, const TF z2, const TF L)
 
 namespace
 {
-    double CFACTOR;
     std::pair<std::string, int> check_for_unique_time_dim(const std::map<std::string, int>& dims)
     {
         bool only_one_time_dim = false;
@@ -174,12 +173,9 @@ namespace
         )
 
     {
-        const TF xmh2o = 18.015265;
         const TF xmnh3 = 17.031;
-        const TF xmh2o_i = TF(1) / xmh2o;
         const TF xmair = 28.9647;
         const TF xmair_i = TF(1) / xmair;
-        const TF Na = 6.02214086e23;
     
         // Update the time integration of the reaction fluxes with the full timestep on first RK3 step
         if (abs(sdt/dt - 1./3.) < 1e-5) trfa += dt;
@@ -188,9 +184,6 @@ namespace
 
         for (int k=kstart; k<kend; ++k)
         {
-            const TF C_M = TF(1e-3) * rhoref[k] * Na * xmair_i;
-            const TF CFACTOR = C_M;
-            const TF sdt_cfac_i = TF(1) / (sdt * CFACTOR);
             const TF lti = TF(1)/lifetime;
             TF decay;
             for (int j=jstart; j<jend; ++j)
@@ -220,14 +213,8 @@ namespace
                         }
                         
                         // ========================================
-                        // STEP 2: Check conditions for SIMPLIFIED method
+                        // STEP 2: Check whether target-height interpolation is required
                         // ========================================
-                        // if (z_1 >= z_target || !sw_adapt_ref_height)
-                        // {
-                            // SIMPLIFIED METHOD: Use first grid level directly
-                            // Condition 1: First grid is already above target (regardless of sw_adapt_ref_height)
-                            // OR
-                            // Condition 2: Adaptive method is disabled
 
                         bool use_simplified;
                         if (!sw_adapt_ref_height)
@@ -247,40 +234,32 @@ namespace
                             T_target[ij]      = T_fld[i + j*jstride + kstart*kstride];
                             rho_target[ij]    = rhoref[kstart];
 
-                            // Calculate instantaneous flux using first grid level concentration (SIMPLIFIED)
-                            flux_inst[ij] = (-1.0) * vdnh3[ij] * nh3[ijk] * rhoref[k] * xmair_i * xmnh3; // [kg(NH3) m-2 s-1]
+                            // Diagnostic mass flux: z_low already in ISL, use lowest-level mole fraction directly
+                            flux_inst[ij] = (-1.0) * vdnh3[ij] * nh3[ijk] * rhoref[kstart] * xmair_i * xmnh3; // [kg(NH3) m-2 s-1]
                             decay = vdnh3[ij]*dzi[k] + lti;
                         }
                         else
                         {
                             // ========================================
-                            // STEP 3: ADAPTIVE METHOD with extrapolation
-                            // Only reaches here if: z_1 < z_target AND sw_adapt_ref_height == true
+                            // STEP 3: Target reference height interpolation
+                            // Only reaches here if: z_low < z_ref AND sw_adapt_ref_height == true
                             // ========================================
-                            
-                            // Get second level concentration
-                            const int ijk2 = i + j*jstride + (kstart+1)*kstride;
-                            const TF c_2 = nh3[ijk2];
-                            
-                            // Heights at the two levels
-                            const TF z_2 = z[kstart+1];
-                            
-                            // Obukhov length from surface
                             const TF L = obuk[ij];
                             
                             // ========================================
-                            // Determine which levels to use for cstar
+                            // Identify bracketing LES levels z1, z2 for scalar scale cstar
                             // ========================================
+
                             int k_below, k_above;
                             if (sw_use_lowest_levels)
                             {
-                                // Always use the two lowest levels
+                                // Always use the two lowest levels (kstart and kstart+1)
                                 k_below = kstart;
                                 k_above = kstart + 1;
                             }
                             else
                             {
-                                // Use levels bracketing z_target
+                                // Use levels bracketing z_ref
                                 k_below = kstart;
                                 k_above = kstart + 1;
                                 for (int k_grid = kstart; k_grid < kend - 1; ++k_grid)
@@ -300,7 +279,7 @@ namespace
                             const TF c_above = nh3[ijk_above];
 
                             // ========================================
-                            // Check if a grid level sits exactly at z_target
+                            // Check if a bracketing level lies within tolerance eps_z of z_ref
                             // ========================================
 
                             if (std::abs(z[k_below] - z_target) < TF(0.5) || std::abs(z[k_above] - z_target) < TF(0.5))
@@ -314,9 +293,8 @@ namespace
                                 c_diff[ij]        = TF(0);
                                 c_extrap_diff[ij] = (c_target[ij] - c_1) * TF(1e9);
                                 T_target[ij]      = T_fld[i + j*jstride + k_exact*kstride];
-                                rho_target[ij]    = rhoref[k_exact];
-                                const TF rhoref_exact = rhoref[k_exact];
-                                flux_inst[ij] = (-1.0) * vdnh3[ij] * c_target[ij] * rhoref_exact * xmair_i * xmnh3;
+                                rho_target[ij]    = rhoref[k_exact];   // used for DEPAC chi_a unit conversion only
+                                flux_inst[ij] = (-1.0) * vdnh3[ij] * c_target[ij] * rhoref[kstart] * xmair_i * xmnh3; // [kg m-2 s-1]
                                 if (std::abs(nh3[ijk]) > TF(1e-15))
                                     decay = (vdnh3[ij] * dzi[k] * c_target[ij] / nh3[ijk]) + lti;
                                 else
@@ -324,7 +302,7 @@ namespace
                             }
                             else
                             {
-                                // Calculate cstar1 (with stability) and cstar2 (neutral)
+                                // Compute scalar scale c_* with stability correction and under neutral conditions (cstar2)
                                 const TF gradient_factor = calc_factor(z[k_below], z[k_above], L);
                                 const TF neutral_factor  = calc_factor(z[k_below], z[k_above], TF(1e30));
                                 
@@ -334,24 +312,25 @@ namespace
                                 cstar2[ij] = (std::abs(neutral_factor) > TF(1e-15)) ?
                                     (c_above - c_below) / neutral_factor  : TF(0);
                                 
-                                // Extrapolate c_target to z_target using cstar1
+                                // Interpolate mole fraction to z_ref using c_*
                                 const TF scaling_factor = calc_factor(z[k_below], z_target, L);
                                 c_target[ij] = c_below + cstar1[ij] * scaling_factor;
                                 c_extrap_diff[ij] = (c_target[ij] - c_1) * TF(1e9);
                                 const TF scaling_factor_neutral = calc_factor(z[k_below], z_target, TF(1e30));
                                 c_diff[ij] = (cstar1[ij] - cstar2[ij]) * scaling_factor_neutral * TF(1e9);
                                 
-                                // Calculate flux using c_target
+                                // Linearly interpolate air density and temperature to z_ref for DEPAC chi_a unit conversion
                                 const TF rhoref_target = rhoref[k_below]
                                     + (z_target - z[k_below]) / (z[k_above] - z[k_below])
                                     * (rhoref[k_above] - rhoref[k_below]);
-                                rho_target[ij] = rhoref_target;
+                                
+                                rho_target[ij] = rhoref_target;   // used for DEPAC chi_a unit conversion only
                                 T_target[ij] = T_fld[i + j*jstride + k_below*kstride]
                                     + (z_target - z[k_below]) / (z[k_above] - z[k_below])
                                     * (T_fld[i + j*jstride + k_above*kstride] - T_fld[i + j*jstride + k_below*kstride]);
-                                flux_inst[ij] = (-1.0) * vdnh3[ij] * c_target[ij] * rhoref_target * xmair_i * xmnh3;
+                                flux_inst[ij] = (-1.0) * vdnh3[ij] * c_target[ij] * rhoref[kstart] * xmair_i * xmnh3; // [kg m-2 s-1]
                                 
-                                // Calculate decay with concentration scaling
+                                // Apply surface tendency with mole fraction scaling
                                 if (std::abs(nh3[ijk]) > TF(1e-15))
                                     decay = (vdnh3[ij] * dzi[k] * c_target[ij] / nh3[ijk]) + lti;
                                 else
@@ -616,15 +595,15 @@ void Chemistry<TF>::create
         m.nmask. resize(gd.kcells);
         m.nmaskh.resize(gd.kcells);
         const std::string group_named = "deposition";
-        stats.add_time_series("vdnh3", "NH3 deposition velocity", "m s-1", group_named);
-        stats.add_time_series("cstar1", "C*_1 concentration scaling parameter", "mol mol-1", group_named);
-        stats.add_time_series("cstar2", "C*_2 concentration scaling parameter", "mol mol-1", group_named);
-        stats.add_time_series("c_target", "NH3 concentration at target height (optimal)", "mol mol-1", group_named);
-        stats.add_time_series("c_extrap_diff", "Concentration difference between z_target and first grid level", "ppb", group_named);
-        stats.add_time_series("c_diff", "Stability effect on extrapolated concentration (cstar1-cstar2)*factor", "ppb", group_named);
+        stats.add_time_series("vdnh3", "NH3 exchange velocity (equals deposition velocity v_d when compensation points absent)", "m s-1", group_named);
+        stats.add_time_series("cstar1", "Mole fraction scalar scale c_* with stability correction", "mol mol-1", group_named);
+        stats.add_time_series("cstar2", "Mole fraction scalar scale c_* under neutral conditions", "mol mol-1", group_named);
+        stats.add_time_series("c_target", "NH3 mole fraction at reference height z_ref", "mol mol-1", group_named);
+        stats.add_time_series("c_extrap_diff", "Mole fraction difference between z_ref and lowest model level z_low", "nmol mol-1", group_named);
+        stats.add_time_series("c_diff", "Stability correction effect on interpolated mole fraction: (cstar1-cstar2)*factor", "nmol mol-1", group_named);
         stats.add_time_series("total_flux_mol_ha", "NH3 total cumulative flux", "mol ha-1", group_named);
-        stats.add_time_series("T_target", "Temperature at target height", "K", group_named);
-        stats.add_time_series("rho_target", "Air density at target height", "kg m-3", group_named);
+        stats.add_time_series("T_target", "Temperature at reference height z_ref", "K", group_named);
+        stats.add_time_series("rho_target", "Air density at reference height z_ref", "kg m-3", group_named);
     }
 
     if (cross.get_switch())
