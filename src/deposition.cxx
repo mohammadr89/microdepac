@@ -51,7 +51,7 @@
  * 
  * === OUTPUTS (Cross-sections) ===
  * # Deposition velocities (per tile and grid-mean):
- * vdnh3_veg, vdnh3_soil, vdnh3_wet     : NH3 deposition velocity [m s-1]
+ * vdnh3_veg, vdnh3_soil, vdnh3_wet     : NH3 exchange velocity v_e [m s-1] (equals deposition velocity when compensation points are absent)
  * 
  * # Resistances (DEPAC only):
  * ra, rb                               : Aerodynamic and quasi-laminar resistances [s m-1]
@@ -59,12 +59,9 @@
  * rb_veg, rb_soil, rb_wet              : Per-tile quasi-laminar resistance [s m-1]
  * rc_tot, rc_tot_veg, rc_tot_soil, rc_tot_wet : Total canopy resistance [s m-1]
  * rc_eff, rc_eff_veg, rc_eff_soil, rc_eff_wet : Effective canopy resistance [s m-1]
- * cw, cstom, csoil_eff                 : External leaf, stomatal, soil resistances [s m-1]
- * cw_veg, cstom_veg, csoil_eff_veg     : Per-tile resistances [s m-1]
- * 
- * # Compensation points (DEPAC only):
+ * cw, cstom, csoil_eff                 : External leaf, stomatal, effective soil pathway resistances R_w, R_stom, R_soil,eff [s m-1]
+ * cw_out, cstom_out, csoil_out         : External leaf, stomatal, soil compensation points chi_w, chi_stom, chi_soil,eff [ug m-3]
  * ccomp_tot, ccomp_tot_veg, ccomp_tot_soil, ccomp_tot_wet : Total compensation point [ug m-3]
- * cw_out, cstom_out, csoil_out         : Component compensation points [ug m-3]
  * cw_out_veg, cstom_out_veg, etc.      : Per-tile compensation points [ug m-3]
  * 
  * # Surface meteorology (DEPAC only):
@@ -101,8 +98,7 @@
 #include <utility>
 
 
-// Added: C linkage for DEPAC Fortran wrapper
-// The bridge between C++ and Fortran
+// C linkage for DEPAC Fortran wrapper (iso_c_binding, Sect. 3)
 extern "C"
 {
     void depac_wrapper
@@ -360,35 +356,35 @@ namespace
                         continue;
 
                     const int local_lu = lu_map[ij];
-                    // Forest types in DEPAC: 4=coniferous, 5=deciduous
+                    // Forest types in DEPAC: 4=coniferous, 5=deciduous, 12=tropical forest (depac_lu.inc)
                     const bool is_forest = (local_lu == 4 || local_lu == 5 || local_lu == 12);
                     const TF local_sai   = is_forest ? lai[ij] + TF(1.0) : lai[ij];
 
-                    // Keep IFS Ra and use vegetation Rb scaling
+                    // Quasi-laminar resistance R_b for vegetated tile: beta=2
                     const TF rb = TF(2.0) / (ckarman * ustar[ij]) * diff_scl[0];
                     deposition_tiles.at(lu_type).rb.data()[ij] = rb;
 
-                    // Use optimal target height concentration from Chemistry module
+                    // Retrieve NH3 mole fraction c_target at reference height z_ref from Chemistry module
                     const TF nh3_conc_value = chemistry.get_c_target()[ij];
-                    const TF nh3_ugm3 = nh3_conc_value * c_ug; 
+                    const TF nh3_ugm3 = nh3_conc_value * c_ug;  // convert mol mol-1 to ug m-3 for DEPAC (chi_a, Table 2)
                     // Conductance/resistance variables
-                    float rc_tot;           // total canopy resistance Rc (s/m)
-                    float ccomp_tot = 0.0;  // total compensation point (ug/m3)
-                    float rc_eff;           // effective total canopy resistance (s/m)
-                    float gsoil_eff_out;    // effective soil conductance (m/s)
-                    float rsoil_eff_out;    // effective soil resistance (s/m) - not directly in DEPAC interface
-                    float gw_out;           // external leaf surface conductance (m/s)
-                    float gstom_out;        // stomatal conductance (m/s)
+
+                    float rc_tot;           // total canopy resistance R_c,tot [s m-1]
+                    float ccomp_tot = 0.0;  // total canopy compensation point chi_c [ug m-3]
+                    float rc_eff;           // effective canopy resistance R_c,eff [s m-1]
+                    float gsoil_eff_out;    // effective soil conductance G_soil,eff [m s-1]
+                    float rsoil_eff_out;    // effective soil resistance R_soil,eff [s m-1]
+                    float gw_out;           // external leaf surface conductance G_w [m s-1]
+                    float gstom_out;        // stomatal conductance G_stom [m s-1]
                     
-                    // Compensation point variables
-                    float cw_out;           // external leaf surface compensation point (ug/m3)
-                    // Note: cw vs. cw_out! "cw" is inverse of gw_out and is "external leaf surface resistance" 
-                    float cstom_out;        // stomatal compensation point (ug/m3)
-                    float csoil_out;        // soil compensation point (ug/m3)
-                    int status;             // error status (0 = success, >0 = error)
-                    // Initialize ccomp_tot with the override value or 0 if no override
+                    // Compensation points returned by DEPAC
+                    // Note: tile fields cw/cstom/csoil_eff store the corresponding resistances (1/G); cw_out/cstom_out/csoil_out store the compensation points
+                    float cw_out;           // external leaf surface compensation point chi_w [ug m-3]
+                    float cstom_out;        // stomatal compensation point chi_stom [ug m-3]
+                    float csoil_out;        // soil compensation point chi_soil,eff [ug m-3]
+                    int status;             // DEPAC return status (0 = success)
+                    // Initialize compensation point: use override value if sw_override_ccomp, otherwise zero
                     bool use_input_ccomp = false;
-                    // If override is enabled, set the flag and the compensation point value
                     if (sw_override_ccomp)
                     {
                         ccomp_tot = ccomp_override_value;
@@ -447,7 +443,7 @@ namespace
                         if (std::abs(total_resistance) > (TF)1e-6)
                         {
                             vdnh3[ij] = (TF)1.0 / total_resistance;
-                            // Note: vdnh3 can be negative (emission) if total_resistance is negative
+                            // v_e < 0 when R_c,eff < 0, indicating net NH3 emission
                         }
                         else
                         {
@@ -458,7 +454,6 @@ namespace
         }
         else if (lu_type == "soil")
         {
-            // Bare soil tile handling  
             for (int j=jstart; j<jend; ++j)
                 for (int i=istart; i<iend; ++i)
                 {
@@ -553,7 +548,6 @@ namespace
         }
         else if (lu_type == "wet")
         {
-            // Wet surfaces handling (both vegetation and soil)
             for (int j=jstart; j<jend; ++j)
                 for (int i=istart; i<iend; ++i)
                 {
@@ -971,7 +965,7 @@ void Deposition<TF>::init(Input& inputin)
     diff_scl = {(TF)1.0};
 
     // Change diff_scl to diff_scl^(2/3) for use in rb calculation
-    for (int i=0; i<1; i++) diff_scl[i] = pow(diff_scl[i], (TF)2.0/(TF)3.0);  // Modified for NH3 only
+    for (int i=0; i<1; i++) diff_scl[i] = pow(diff_scl[i], (TF)2.0/(TF)3.0);  // (Sc/Pr)^(2/3) scaling for R_b; set to 1.0 for NH3
 
     for (auto& tile : deposition_tiles)
     {
@@ -1036,7 +1030,6 @@ void Deposition<TF>::update_time_dependent
     std::vector<TF> T_a(gd.ijcells);
     std::vector<TF> RH_a(gd.ijcells);
 
-    // Only retrieve DEPAC-specific values if using DEPAC
     if (use_depac)
     {
         day_of_year = int(timeloop.calc_day_of_year());
@@ -1146,7 +1139,7 @@ void Deposition<TF>::update_time_dependent
             tile.second.ra.data(),
             tile.second.ustar.data(),
             tile.second.fraction.data(),
-            fields.sp.at("nh3")->fld.data(),  // Pass NH3 concentration directly from Fields
+            fields.sp.at("nh3")->fld.data(),  // nh3_concentration: unused in DEPAC path; c_target from Chemistry module is used instead
             rmes.data(), 
             rsoil.data(), 
             rcut.data(),
@@ -1190,7 +1183,6 @@ void Deposition<TF>::update_time_dependent
     }
     get_tiled_mean(vdnh3,"nh3",(TF) 1.0,tiles.at("veg").fraction.data(), tiles.at("soil").fraction.data(), tiles.at("wet").fraction.data());
 
-    // Only calculate DEPAC-specific means if using DEPAC
     if (use_depac)
     {
         get_tiled_mean(ra_mean.data(), "ra", (TF)1.0, tiles.at("veg").fraction.data(), tiles.at("soil").fraction.data(), tiles.at("wet").fraction.data());
@@ -1206,7 +1198,7 @@ void Deposition<TF>::update_time_dependent
         get_tiled_mean(rc_eff_mean.data(), "rc_eff", (TF)1.0, tiles.at("veg").fraction.data(), tiles.at("soil").fraction.data(), tiles.at("wet").fraction.data());
     }
     
-    // cmk: we use the wet-tile info for u* and ra, since these are calculated in lsm with f_wet = 100%
+    // For open water cells, recalculate v_e using wet-tile R_a and u_* (f_wet = 100% in LSM)
     update_vd_water(vdnh3,"nh3",tiles.at("wet").ra.data(),tiles.at("wet").ustar.data(),water_mask.data(),diff_scl.data(),rwat.data());
 }
 
