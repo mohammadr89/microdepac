@@ -390,16 +390,19 @@ Chemistry<TF>::~Chemistry()
 template<typename TF>
 void Chemistry<TF>::exec_stats(const int iteration, const double time, Stats<TF>& stats)
 {
-    if (!sw_chemistry or stats.get_switch())
+    if (!sw_chemistry || !stats.get_switch())
         return;
 
     const TF no_offset = 0.;
-    const TF no_threshold = 0.;
     auto& gd = grid.get_grid_data();
     const TF NREACT = TF(1);
+
     if (iteration != 0)
     {
-        stats.calc_stats_2d("vdnh3"   , vdnh3,   no_offset);
+        if (trfa <= TF(0))
+            return;
+
+        stats.calc_stats_2d("vdnh3", vdnh3, no_offset);
         const TF xmnh3 = 17.031;
         const TF xmnh3_i = TF(1.0) / xmnh3;
         const TF m2_to_ha = TF(1.0e4);
