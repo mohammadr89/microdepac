@@ -26,11 +26,12 @@
  * [chemistry]
  * swchemistry  = boolean : Enable/disable chemistry module (default: false)
  * lifetime     = float   : Tracer decay timescale [s] (default: 1e30)
- * rsl_ratio    = float   : Roughness sublayer ratio (default: 20.0, only used if sw_const_ref_height=false)
+ * rsl_ratio    = float   : Roughness sublayer factor relative to z0m (default: 20.0). Used to compute z_star = rsl_ratio * z0m; also used as z_target when sw_const_ref_height=false.
  * sw_const_ref_height = boolean : Use constant reference height (default: true)
  * z_fixed            = float   : Fixed reference height [m] (default: 20, used if sw_const_ref_height=true)
  * sw_adapt_ref_height = boolean : Use adaptive extrapolation method (default: true)
- * sw_use_lowest_levels = boolean : Use kstart/kstart+1 for cstar (true) or bracketing levels (false) (default: true)
+ * sw_force_ref_height = boolean : Always use the selected reference height, bypassing the RSL guard (default: false, only used if sw_adapt_ref_height=true)
+ * sw_use_lowest_levels = boolean : Use kstart/kstart+1 for cstar (true) or bracketing levels (false) (default: false)
  * 
  * === INPUTS (NetCDF file: timedep_chem group) ===
  * Photolysis rates: jo31d, jh2o2, jno2, jno3, jn2o5, jch2or, jch2om, jch3o2h
@@ -164,6 +165,7 @@ namespace
         const TF z_fixed,              
         const bool sw_adapt_ref_height,
         const bool sw_use_lowest_levels,
+        const bool sw_force_ref_height,
         const int istart, const int iend,
         const int jstart, const int jend,
         const int kstart, const int kend,
@@ -199,30 +201,31 @@ namespace
                         const TF c_1 = nh3[ijk1];
                         const TF z_1 = z[kstart];
                         
-                        // ========================================
-                        // STEP 1: Determine reference height
-                        // ========================================
-                        TF z_target;
-                        if (sw_const_ref_height)
-                        {
-                            z_target = z_fixed;
-                        }
-                        else
-                        {
-                            z_target = rsl_ratio * z0m[ij];
-                        }
+                        // Target reference height used when interpolation is required.
+                        const TF z_target = sw_const_ref_height ? z_fixed : rsl_ratio * z0m[ij];
                         
-                        // ========================================
-                        // STEP 2: Check whether target-height interpolation is required
-                        // ========================================
-
+                        // Estimated roughness sublayer thickness.
+                        const TF z_star = rsl_ratio * z0m[ij];
+                        
                         bool use_simplified;
+                        
                         if (!sw_adapt_ref_height)
+                        {
+                            // No reference-height correction: use the lowest model level directly.
                             use_simplified = true;
-                        else if (sw_const_ref_height)
-                            use_simplified = false;  // always extrapolate to z_fixed for fair comparison
+                        }
+                        else if (sw_force_ref_height)
+                        {
+                            // Always use the selected reference height, regardless of whether
+                            // the lowest model level is already above the estimated RSL.
+                            use_simplified = false;
+                        }
                         else
-                            use_simplified = (z_1 >= z_target);
+                        {
+                            // Manuscript behaviour: only interpolate when the lowest model level
+                            // lies below the estimated roughness sublayer height.
+                            use_simplified = (z_1 >= z_star);
+                        }
                         
                         if (use_simplified)
                         {
@@ -242,7 +245,9 @@ namespace
                         {
                             // ========================================
                             // STEP 3: Target reference height interpolation
-                            // Only reaches here if: z_low < z_ref AND sw_adapt_ref_height == true
+                            // Reaches here when reference-height correction is active and either
+                            // (i) the selected reference height is forced, or
+                            // (ii) the lowest model level lies below the estimated RSL height.
                             // ========================================
                             const TF L = obuk[ij];
                             
@@ -368,7 +373,8 @@ Chemistry<TF>::Chemistry
     sw_const_ref_height = inputin.get_item<bool>("chemistry", "sw_const_ref_height", "", true);
     z_fixed = inputin.get_item<TF>("chemistry", "z_fixed", "", (TF)20);
     sw_adapt_ref_height = inputin.get_item<bool>("chemistry", "sw_adapt_ref_height", "", true);
-    sw_use_lowest_levels = inputin.get_item<bool>("chemistry", "sw_use_lowest_levels", "", true);
+    sw_use_lowest_levels = inputin.get_item<bool>("chemistry", "sw_use_lowest_levels", "", false);
+    sw_force_ref_height = inputin.get_item<bool>("chemistry", "sw_force_ref_height", "", false);
 
     if (!sw_chemistry)
         return;
@@ -596,12 +602,14 @@ void Chemistry<TF>::create
         m.nmaskh.resize(gd.kcells);
         const std::string group_named = "deposition";
         stats.add_time_series("vdnh3", "NH3 exchange velocity (equals deposition velocity v_d when compensation points absent)", "m s-1", group_named);
+        stats.add_time_series("flux_nh3", "Time-averaged NH3 surface mass flux", "mol ha-1 yr-1", group_named);
+        stats.add_time_series("flux_inst", "Instantaneous NH3 surface mass flux; negative for deposition", "kg m-2 s-1", group_named);
+        stats.add_time_series("total_flux_mol_ha", "NH3 total cumulative flux", "mol ha-1", group_named);
         stats.add_time_series("cstar1", "Mole fraction scalar scale c_* with stability correction", "mol mol-1", group_named);
         stats.add_time_series("cstar2", "Mole fraction scalar scale c_* under neutral conditions", "mol mol-1", group_named);
         stats.add_time_series("c_target", "NH3 mole fraction at reference height z_ref", "mol mol-1", group_named);
         stats.add_time_series("c_extrap_diff", "Mole fraction difference between z_ref and lowest model level z_low", "nmol mol-1", group_named);
         stats.add_time_series("c_diff", "Stability correction effect on interpolated mole fraction: (cstar1-cstar2)*factor", "nmol mol-1", group_named);
-        stats.add_time_series("total_flux_mol_ha", "NH3 total cumulative flux", "mol ha-1", group_named);
         stats.add_time_series("T_target", "Temperature at reference height z_ref", "K", group_named);
         stats.add_time_series("rho_target", "Air density at reference height z_ref", "kg m-3", group_named);
     }
@@ -747,6 +755,7 @@ void Chemistry<TF>::exec(Thermo<TF>& thermo, Boundary<TF>& boundary, double sdt,
         z_fixed,
         sw_adapt_ref_height,
         sw_use_lowest_levels,
+        sw_force_ref_height,
         gd.istart, gd.iend,
         gd.jstart, gd.jend,
         gd.kstart, gd.kend,
