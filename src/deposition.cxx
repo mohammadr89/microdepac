@@ -324,7 +324,6 @@ namespace
         const TF react,
         const TF c_ave_prev_nh3,
         const TF catm,
-        const TF c_ug,
         const TF pressure,
         const bool sw_override_ccomp,
         const TF ccomp_override_value,
@@ -366,7 +365,7 @@ namespace
 
                     // Retrieve NH3 mole fraction c_target at reference height z_ref from Chemistry module
                     const TF nh3_conc_value = chemistry.get_c_target()[ij];
-                    const TF nh3_ugm3 = nh3_conc_value * c_ug;  // convert mol mol-1 to ug m-3 for DEPAC (chi_a, Table 2)
+                    const TF nh3_ugm3 = nh3_conc_value * chemistry.get_rho_target()[ij] * TF(1e9) * xmnh3 * xmair_i;  // convert mol mol-1 to ug m-3 for depac (chi_a, table 2)
                     // Conductance/resistance variables
 
                     float rc_tot;           // total canopy resistance R_c,tot [s m-1]
@@ -466,7 +465,7 @@ namespace
                     const TF rb = (TF)1.0 / (ckarman * ustar[ij]) * diff_scl[0];
                     deposition_tiles.at(lu_type).rb.data()[ij] = rb;
                     const TF nh3_conc_value = chemistry.get_c_target()[ij];
-                    const TF nh3_ugm3 = nh3_conc_value * c_ug;
+                    const TF nh3_ugm3 = nh3_conc_value * chemistry.get_rho_target()[ij] * TF(1e9) * xmnh3 * xmair_i;
                     float rc_tot;
                     float ccomp_tot = 0.0;
                     float rc_eff;
@@ -554,7 +553,7 @@ namespace
                     const int ij = i + j*jj;
                     const int ijk = i + j*jj + kstart*ijcells; 
                     const TF nh3_conc_value = chemistry.get_c_target()[ij];
-                    const TF nh3_ugm3 = nh3_conc_value * c_ug;
+                    const TF nh3_ugm3 = nh3_conc_value * chemistry.get_rho_target()[ij] * TF(1e9) * xmnh3 * xmair_i;
                     if (fraction[ij] < (TF)1e-12)
                         continue;
                     float rc_tot;
@@ -748,7 +747,6 @@ namespace
         const TF react,
         const TF c_ave_prev_nh3,
         const TF catm,
-        const TF c_ug,
         const TF pressure,
         const bool sw_override_ccomp,
         const TF ccomp_override_value,
@@ -798,7 +796,6 @@ namespace
                 react,
                 c_ave_prev_nh3,
                 catm,
-                c_ug,
                 pressure,
                 sw_override_ccomp,
                 ccomp_override_value,
@@ -1110,7 +1107,6 @@ void Deposition<TF>::update_time_dependent
     TF xmnh3 = 17.031;
     TF xmair = 28.9647;
     TF xmair_i = TF(1) / xmair;
-    TF c_ug = TF(1.0e9) * fields.rhoref[gd.kstart] * xmnh3 * xmair_i;
     
     for (const auto& tile_name : deposition_tile_names)
     {
@@ -1167,7 +1163,6 @@ void Deposition<TF>::update_time_dependent
             react,
             c_ave_prev_nh3,
             catm,
-    	    c_ug,
             pressure,
             sw_override_ccomp,
             ccomp_override_value,

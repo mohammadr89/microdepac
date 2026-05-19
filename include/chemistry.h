@@ -55,6 +55,7 @@ class Chemistry
     void exec_cross(Cross<TF>&, unsigned long);
     void calc_c_target(Boundary<TF>&);
     const std::vector<TF>& get_c_target() const { return c_target; }
+    const std::vector<TF>& get_rho_target() const { return rho_target; }
 
     protected:
 
@@ -74,6 +75,7 @@ class Chemistry
     TF z_fixed;
     bool sw_adapt_ref_height;
     bool sw_use_lowest_levels;
+    bool sw_force_ref_height;
     Field3d_operators<TF> field3d_operators;
     std::shared_ptr<Deposition<TF>> deposition;
     Mask<TF> m;     // borrow from Stats to gather chemistry statistics
