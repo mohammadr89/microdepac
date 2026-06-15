@@ -1341,8 +1341,9 @@ void Boundary_surface_lsm<TF>::create_stats(
             "ustar", "obuk", "wl",
             "fraction_wet", "fraction_soil", "fraction_veg",
             "rs_veg", "rs_soil",
-            "ra_veg", "ra_soil", "ra_wet"
-            "ustar_wet","ustar_soil", "ustar_veg" };
+            "ra_veg", "ra_soil", "ra_wet",
+            "ustar_wet","ustar_soil", "ustar_veg",
+            "c_veg", "c_soil", "c_wet" };
         cross_list = cross.get_enabled_variables(allowed_crossvars);
     }
 }
@@ -1596,6 +1597,12 @@ void Boundary_surface_lsm<TF>::exec_cross(Cross<TF>& cross, unsigned long iotime
             cross.cross_plane(tiles.at("wet").ra.data(), no_offset, name, iotime);
         else if (name == "ra_veg")
             cross.cross_plane(tiles.at("veg").ra.data(), no_offset, name, iotime);
+        else if (name == "c_veg")
+            cross.cross_plane(tiles.at("veg").fraction.data(), no_offset, name, iotime);
+        else if (name == "c_soil")
+            cross.cross_plane(tiles.at("soil").fraction.data(), no_offset, name, iotime);
+        else if (name == "c_wet")
+            cross.cross_plane(tiles.at("wet").fraction.data(), no_offset, name, iotime);
     }
 
     fields.release_tmp(tmp1);
