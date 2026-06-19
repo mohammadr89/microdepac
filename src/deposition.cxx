@@ -96,6 +96,7 @@
 #include <math.h>
 #include <sstream>
 #include <utility>
+#include "monin_obukhov.h"
 
 
 // C linkage for DEPAC Fortran wrapper (iso_c_binding, Sect. 3)
@@ -1123,6 +1124,7 @@ void Deposition<TF>::update_time_dependent
     // Adjust ra from zsl to z_target using stability function ratio
     if (use_depac && chemistry.get_sw_adapt_ref_height())
     {
+	namespace most = Monin_obukhov;
         const TF z_sl = gd.z[gd.kstart];
         const std::vector<TF>& z_target = chemistry.get_z_target();
         
@@ -1140,8 +1142,10 @@ void Deposition<TF>::update_time_dependent
                         if (dep_tile.ra[ij] > (TF)0 && z_target[ij] > (TF)0)
                         {
                             const TF L = dep_tile.obuk[ij];
-                            const TF fh_zsl = most::fh(z_sl, boundary.get_tiles().at(tile_name).z0h[ij], L);
-                            const TF fh_ztarget = most::fh(z_target[ij], boundary.get_tiles().at(tile_name).z0h[ij], L);
+                            // const TF fh_zsl = most::fh(z_sl, boundary.get_tiles().at(tile_name).z0h[ij], L);
+                            // const TF fh_ztarget = most::fh(z_target[ij], boundary.get_tiles().at(tile_name).z0h[ij], L);
+			    const TF fh_zsl = most::fh(z_sl, boundary.get_z0h()[ij], L);
+			    const TF fh_ztarget = most::fh(z_target[ij], boundary.get_z0h()[ij], L);
                             
                             if (std::abs(fh_ztarget) > (TF)1e-15)
                                 dep_tile.ra[ij] *= (fh_zsl / fh_ztarget);
