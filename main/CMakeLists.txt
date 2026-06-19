@@ -43,9 +43,12 @@ add_definitions(-DGITHASH="${GITHASH}")
 
 add_executable(microhh microhh.cxx)
 target_include_directories(microhh PUBLIC ${INCLUDE_DIRS} "../include")
+target_link_directories(microhh PUBLIC ${DEPAC_LIB_DIR}) 
+
 
 if(USECUDA)
     target_link_libraries(microhh microhhc curand rte_rrtmgp rte_rrtmgp_cuda rte_rrtmgp_cuda_rt rte_rrtmgp_kernels rte_rrtmgp_kernels_cuda rte_rrtmgp_kernels_cuda_rt ${LIBS} m)
 else()
-    target_link_libraries(microhh microhhc rte_rrtmgp_kernels rte_rrtmgp ${LIBS} m)
+    # target_link_libraries(microhh microhhc rte_rrtmgp_kernels rte_rrtmgp ${LIBS} m)
+    target_link_libraries(microhh microhhc rte_rrtmgp rte_rrtmgp_kernels ${LIBS} m)
 endif()

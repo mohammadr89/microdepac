@@ -1136,6 +1136,12 @@ const std::vector<TF>& Boundary<TF>::get_z0m() const
 }
 
 template<typename TF>
+const std::vector<TF>& Boundary<TF>::get_z0h() const
+{
+    throw std::runtime_error("Function get_z0h() not implemented in base boundary.");
+}
+
+template<typename TF>
 const std::vector<TF>& Boundary<TF>::get_dudz() const
 {
     throw std::runtime_error("Function get_dudz() not implemented in base boundary.");

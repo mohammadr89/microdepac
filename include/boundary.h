@@ -157,6 +157,7 @@ class Boundary
 
         // Get functions for various 2D fields
         virtual const std::vector<TF>& get_z0m() const;
+	virtual const std::vector<TF>& get_z0h() const;
         virtual const std::vector<TF>& get_dudz() const;
         virtual const std::vector<TF>& get_dvdz() const;
         virtual const std::vector<TF>& get_dbdz() const;

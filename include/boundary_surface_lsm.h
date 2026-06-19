@@ -44,6 +44,7 @@ class Boundary_surface_lsm : public Boundary<TF>
         void set_values();
 
         const std::vector<TF>& get_z0m() const { return z0m; };
+	const std::vector<TF>& get_z0h() const { return z0h; };
         const std::vector<TF>& get_dudz() const { return dudz_mo; }
         const std::vector<TF>& get_dvdz() const { return dvdz_mo; }
         const std::vector<TF>& get_dbdz() const { return dbdz_mo; }
