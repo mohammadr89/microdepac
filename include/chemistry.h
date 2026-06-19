@@ -56,6 +56,8 @@ class Chemistry
     void calc_c_target(Boundary<TF>&);
     const std::vector<TF>& get_c_target() const { return c_target; }
     const std::vector<TF>& get_rho_target() const { return rho_target; }
+    const std::vector<TF>& get_z_target() const { return z_target; }
+    bool get_sw_adapt_ref_height() const { return sw_adapt_ref_height; }
 
     protected:
 
@@ -70,6 +72,7 @@ class Chemistry
     bool sw_chemistry;
     TF lifetime;
     std::vector<TF> c_target;
+    std::vector<TF> z_target;  // reference height at each grid cell [m]
     TF rsl_ratio; // Roughness sublayer ratio (alpha = z*/h_c) - Basu & Lacser (2017); reference height z_ref >= rsl_ratio * z0m
     bool sw_const_ref_height;
     TF z_fixed;

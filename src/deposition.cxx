@@ -1119,6 +1119,38 @@ void Deposition<TF>::update_time_dependent
             std::copy(boundary_tile.ustar.begin(), boundary_tile.ustar.end(), dep_tile.ustar.begin());
         }
     }
+
+    // Adjust ra from zsl to z_target using stability function ratio
+    if (use_depac && chemistry.get_sw_adapt_ref_height())
+    {
+        const TF z_sl = gd.z[gd.kstart];
+        const std::vector<TF>& z_target = chemistry.get_z_target();
+        
+        for (const auto& tile_name : deposition_tile_names)
+        {
+            if (deposition_tiles.count(tile_name) > 0)
+            {
+                auto& dep_tile = deposition_tiles.at(tile_name);
+                
+                for (int j = gd.jstart; j < gd.jend; ++j)
+                    for (int i = gd.istart; i < gd.iend; ++i)
+                    {
+                        const int ij = i + j * gd.icells;
+                        
+                        if (dep_tile.ra[ij] > (TF)0 && z_target[ij] > (TF)0)
+                        {
+                            const TF L = dep_tile.obuk[ij];
+                            const TF fh_zsl = most::fh(z_sl, boundary.get_tiles().at(tile_name).z0h[ij], L);
+                            const TF fh_ztarget = most::fh(z_target[ij], boundary.get_tiles().at(tile_name).z0h[ij], L);
+                            
+                            if (std::abs(fh_ztarget) > (TF)1e-15)
+                                dep_tile.ra[ij] *= (fh_zsl / fh_ztarget);
+                        }
+                    }
+            }
+        }
+    }
+
     
     // calculate deposition per tile:
     for (auto& tile : tiles)
