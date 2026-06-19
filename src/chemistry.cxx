@@ -202,7 +202,9 @@ namespace
                         const TF z_1 = z[kstart];
                         
                         // Target reference height used when interpolation is required.
-                        const TF z_target = sw_const_ref_height ? z_fixed : rsl_ratio * z0m[ij];
+                        // const TF z_target = sw_const_ref_height ? z_fixed : rsl_ratio * z0m[ij];
+			z_target[ij] = sw_const_ref_height ? z_fixed : rsl_ratio * z0m[ij];
+			TF z_target_local = z_target[ij];  // local copy for calculations
                         
                         // Estimated roughness sublayer thickness.
                         const TF z_star = rsl_ratio * z0m[ij];
@@ -269,7 +271,7 @@ namespace
                                 k_above = kstart + 1;
                                 for (int k_grid = kstart; k_grid < kend - 1; ++k_grid)
                                 {
-                                    if (z[k_grid] < z_target)
+                                    if (z[k_grid] < z_target_local)
                                     {
                                         k_below = k_grid;
                                         k_above = k_grid + 1;
@@ -287,9 +289,9 @@ namespace
                             // Check if a bracketing level lies within tolerance eps_z of z_ref
                             // ========================================
 
-                            if (std::abs(z[k_below] - z_target) < TF(0.5) || std::abs(z[k_above] - z_target) < TF(0.5))
+                            if (std::abs(z[k_below] - z_target_local) < TF(0.5) || std::abs(z[k_above] - z_target_local) < TF(0.5))
                             {
-                                int k_exact = (std::abs(z[k_above] - z_target) < std::abs(z[k_below] - z_target))
+                                int k_exact = (std::abs(z[k_above] - z_target_local) < std::abs(z[k_below] - z_target_local))
                                               ? k_above : k_below;
                                 const int ijk_exact = i + j*jstride + k_exact*kstride;
                                 c_target[ij]      = nh3[ijk_exact];
@@ -318,20 +320,20 @@ namespace
                                     (c_above - c_below) / neutral_factor  : TF(0);
                                 
                                 // Interpolate mole fraction to z_ref using c_*
-                                const TF scaling_factor = calc_factor(z[k_below], z_target, L);
+                                const TF scaling_factor = calc_factor(z[k_below], z_target_local, L);
                                 c_target[ij] = c_below + cstar1[ij] * scaling_factor;
                                 c_extrap_diff[ij] = (c_target[ij] - c_1) * TF(1e9);
-                                const TF scaling_factor_neutral = calc_factor(z[k_below], z_target, TF(1e30));
+                                const TF scaling_factor_neutral = calc_factor(z[k_below], z_target_local, TF(1e30));
                                 c_diff[ij] = (cstar1[ij] - cstar2[ij]) * scaling_factor_neutral * TF(1e9);
                                 
                                 // Linearly interpolate air density and temperature to z_ref for DEPAC chi_a unit conversion
                                 const TF rhoref_target = rhoref[k_below]
-                                    + (z_target - z[k_below]) / (z[k_above] - z[k_below])
+                                    + (z_target_local - z[k_below]) / (z[k_above] - z[k_below])
                                     * (rhoref[k_above] - rhoref[k_below]);
                                 
                                 rho_target[ij] = rhoref_target;   // used for DEPAC chi_a unit conversion only
                                 T_target[ij] = T_fld[i + j*jstride + k_below*kstride]
-                                    + (z_target - z[k_below]) / (z[k_above] - z[k_below])
+                                    + (z_target_local - z[k_below]) / (z[k_above] - z[k_below])
                                     * (T_fld[i + j*jstride + k_above*kstride] - T_fld[i + j*jstride + k_below*kstride]);
                                 flux_inst[ij] = (-1.0) * vdnh3[ij] * c_target[ij] * rhoref[kstart] * xmair_i * xmnh3; // [kg m-2 s-1]
                                 
@@ -477,6 +479,8 @@ void Chemistry<TF>::init(Input& inputin)
     std::fill(cstar2.begin(), cstar2.end(), TF(0));
     c_target.resize(gd.ijcells);
     std::fill(c_target.begin(), c_target.end(), TF(0));
+    z_target.resize(gd.ijcells);
+    std::fill(z_target.begin(), z_target.end(), TF(0));
     c_extrap_diff.resize(gd.ijcells);
     std::fill(c_extrap_diff.begin(), c_extrap_diff.end(), TF(0));
     c_diff.resize(gd.ijcells);
