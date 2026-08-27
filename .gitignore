@@ -27,3 +27,5 @@ cases/
 *.o
 *.lib
 depac_lib/libmicrohhc.a
+*.mod
+*.gch
