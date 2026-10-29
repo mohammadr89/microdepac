@@ -33,6 +33,7 @@
  * hlaw                  = float   : Henry's law constant (required)
  * react                 = float   : Reactivity factor (required)
  * c_ave_prev_nh3        = float   : Previous NH3 concentration [ug m-3] (required)
+ * c_ave_prev_so2        = float   : Long-term mean SO2 concentration [ug m-3] (default: 0). 0 disables the NH3 co-deposition factor   // ADDED   // CHANGED: optional
  * nwet_veg              = int     : Vegetation wetness indicator (required)
  * nwet_soil             = int     : Soil wetness indicator (required)
  * nwet_wet              = int     : Wet surface wetness indicator (required)
@@ -76,6 +77,7 @@
 #include "chemistry.h"
 #include "constants.h"
 #include "cross.h"
+#include "field3d_io.h"   // ADDED: MPI-aware 2D binary loader (same one the LSM uses for c_veg, lai, ...)
 #include "deposition.h"
 #include "fields.h"
 #include "grid.h"
@@ -90,11 +92,13 @@
 #include "timeloop.h"
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>   // DEBUG: getenv
 #include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <math.h>
 #include <sstream>
+#include <stdexcept>      // ADDED: std::runtime_error is thrown below
 #include <utility>
 #include "monin_obukhov.h"
 
@@ -135,12 +139,59 @@ extern "C"
         float *cw_out,
         float *cstom_out,
         float *csoil_out,
-        bool use_input_ccomp 
+        int use_input_ccomp,   // CHANGED: was bool (1 byte). The Fortran wrapper reads integer(c_int) (4 bytes), so the upper bytes could be garbage
+        float tsea,            // ADDED: water surface temperature [K]. DEPAC reads it for water land-use classes (le_drydepos_gas_depac.f90 l. 1755)   // CHANGED: comma added
+        float c_ave_prev_so2   // ADDED: long-term mean SO2 [ug m-3]. Last argument, same position as in depac_wrapper_c (wrapper_depac.f90)
         );
 }
 
 namespace
 {
+    // =====================================================================================
+    // ADDED: land-use handling. This file contains NO land-use class numbers any more.
+    //
+    // plume_chem_input.py is the single place where land use is defined (table ifs_to_depac and table depac_is_forest).
+    // It writes two 2D binaries in the model precision, like the other LSM binaries:
+    //   lu_map.0000000     DEPAC land-use class 1..18 of every column (depac_lu.inc)
+    //   sai_add.0000000    SAI - LAI of every column: 1 for forest, 0 otherwise
+    // The kernels use lu_map as the DEPAC class and SAI = LAI + sai_add.
+    // REDUNDANT (removed): the hard-coded test (local_lu == 4 || local_lu == 5 || local_lu == 12).
+    // =====================================================================================
+    constexpr int n_depac_lu = 18;   // number of DEPAC land-use classes in depac_lu.inc (1-indexed)
+
+    // Convert one value read from lu_map to a valid DEPAC class. Throws if it is not an integer in 1..n_depac_lu.
+    template<typename TF>
+    int checked_depac_lu(const TF value)
+    {
+        const int lu = static_cast<int>(std::lround(value));
+        if (std::abs(value - TF(lu)) > TF(1e-6) || lu < 1 || lu > n_depac_lu)
+            throw std::runtime_error("Deposition: lu_map holds " + std::to_string(value) + ", which is not a DEPAC land-use class 1.." + std::to_string(n_depac_lu) + " (wrong file, wrong precision, or the IFS to DEPAC table was not applied in plume_chem_input.py)");
+        return lu;
+    }
+
+    // Convert one value read from sai_add to 0 or 1. Throws otherwise.
+    template<typename TF>
+    TF checked_sai_add(const TF value)
+    {
+        if (std::abs(value) > TF(1e-6) && std::abs(value - TF(1.0)) > TF(1e-6))
+            throw std::runtime_error("Deposition: sai_add holds " + std::to_string(value) + ", expected 0 or 1");
+        return (value > TF(0.5)) ? TF(1.0) : TF(0.0);
+    }
+
+    // DEBUG (temporary, remove after the crash is found): with the environment variable DEPAC_DEBUG set, every call of
+    // depac_wrapper prints its inputs to stderr BEFORE the call, so the last line of a rank before a segfault is the crashing call.
+    template<typename TF>
+    void depac_debug_print(const char* tile, const int i, const int j, const int lu, const TF lai, const TF sai, const TF c_veg, const TF fraction,
+                           const int nwet, const TF ustar, const TF ra, const TF rb, const TF T_c, const TF rh, const TF nh3)
+    {
+        static const bool on = (std::getenv("DEPAC_DEBUG") != nullptr);
+        if (!on) return;
+        const char* r = std::getenv("PMIX_RANK");
+        std::fprintf(stderr, "DEPAC_DEBUG rank=%s tile=%s i=%d j=%d lu=%d lai=%g sai=%g c_veg=%g frac=%g nwet=%d ustar=%g ra=%g rb=%g T=%g rh=%g nh3=%g\n",
+                     r ? r : "?", tile, i, j, lu, double(lai), double(sai), double(c_veg), double(fraction), nwet, double(ustar), double(ra), double(rb), double(T_c), double(rh), double(nh3));
+        std::fflush(stderr);
+    }
+
     template<typename TF>
     void calc_tiled_mean
         (
@@ -312,18 +363,19 @@ namespace
         const TF rh,
         const TF* const restrict T_a,
         const TF* const restrict RH_a,
-        const TF sai,
+        // REDUNDANT (removed): const TF sai,   // SAI is now lai + sai_add per cell
         const TF lat,
         const int day_of_year,
-        const int nwet,
+        // REDUNDANT (removed): const int nwet,   // was never assigned and never used in the kernels
         const int nwet_veg,
         const int nwet_soil,
         const int nwet_wet,
-        const int lu,
+        // REDUNDANT (removed): const int lu,   // land-use class is now taken per cell from lu_map
         const int iratns,
         const TF hlaw,
         const TF react,
         const TF c_ave_prev_nh3,
+        const TF c_ave_prev_so2,   // ADDED: long-term mean SO2 [ug m-3]
         const TF catm,
         const TF pressure,
         const bool sw_override_ccomp,
@@ -334,6 +386,7 @@ namespace
         const int jstart, const int jend,
         const int jj,
         const int* const restrict lu_map,
+        const TF* const restrict sai_add,   // ADDED: SAI - LAI per cell (0 or 1), from sai_add.0000000
         const int kstart,
         const int ijcells
         )
@@ -355,10 +408,10 @@ namespace
                     if (fraction[ij] < (TF)1e-12)
                         continue;
 
+                    // CHANGED: lu_map is the DEPAC class and sai_add is 0 or 1 (forest), both from plume_chem_input.py.
+                    // REDUNDANT (removed): const bool is_forest = (local_lu == 4 || local_lu == 5 || local_lu == 12);
                     const int local_lu = lu_map[ij];
-                    // Forest types in DEPAC: 4=coniferous, 5=deciduous, 12=tropical forest (depac_lu.inc)
-                    const bool is_forest = (local_lu == 4 || local_lu == 5 || local_lu == 12);
-                    const TF local_sai   = is_forest ? lai[ij] + TF(1.0) : lai[ij];
+                    const TF local_sai = lai[ij] + sai_add[ij];
 
                     // Quasi-laminar resistance R_b for vegetated tile: beta=2
                     const TF rb = TF(2.0) / (ckarman * ustar[ij]) * diff_scl[0];
@@ -391,6 +444,7 @@ namespace
                         use_input_ccomp = true;
                     }
 
+                    depac_debug_print<TF>("veg", i, j, local_lu, lai[ij], local_sai, c_veg[ij], fraction[ij], nwet_veg, ustar[ij], ra[ij], rb, T_a[ij]-TF(273.15), RH_a[ij], nh3_ugm3);   // DEBUG
                     depac_wrapper
                         (
                         compnam,
@@ -424,9 +478,14 @@ namespace
                         &cw_out,      
                         &cstom_out,  
                         &csoil_out,
-                        use_input_ccomp
+                        use_input_ccomp,
+                        T_a[ij],  // ADDED: tsea [K]. CHECK: air temperature at the first model level is used as water surface temperature   // CHANGED: comma added
+                        c_ave_prev_so2   // ADDED: long-term mean SO2 [ug m-3], last argument
                         );
 
+                    // ADDED: a non-zero DEPAC status was silently ignored before, and the tile then kept its old v_e
+                    if (status != STATUS_OK)
+                        throw std::runtime_error("Deposition: DEPAC returned status " + std::to_string(status) + " for tile " + lu_type + " at i=" + std::to_string(i) + ", j=" + std::to_string(j) + ", lu=" + std::to_string(local_lu));
                     if (status == STATUS_OK)
                     {
                         deposition_tiles.at(lu_type).rc_tot.data()[ij] = rc_tot;
@@ -440,7 +499,13 @@ namespace
                         deposition_tiles.at(lu_type).csoil_out.data()[ij] = csoil_out;
 
                         const TF total_resistance = ra[ij] + rb + rc_eff;
-                        if (std::abs(total_resistance) > (TF)1e-6)
+                        // ADDED: rc_tot = -9999 means DEPAC found no deposition path (le_drydepos_gas_depac.f90 l. 165-167, 1631-1632).
+                        // Then rc_eff = -9999 as well, and 1/(ra + rb - 9999) < 0 would be a spurious emission.
+                        if (rc_tot < TF(-9998))
+                        {
+                            vdnh3[ij] = TF(0);
+                        }
+                        else if (std::abs(total_resistance) > (TF)1e-6)
                         {
                             vdnh3[ij] = (TF)1.0 / total_resistance;
                             // v_e < 0 when R_c,eff < 0, indicating net NH3 emission
@@ -462,6 +527,12 @@ namespace
 
                     if (fraction[ij] < (TF)1e-12)
                         continue;
+
+                    // CHANGED: the soil tile used the members "lu" and "sai", which were never assigned (undefined values).
+                    // It now uses the land-use class and SAI of the cell itself.
+                    // CHECK: modelling choice. The soil path of DEPAC depends on the class (rsoil, rinc via b(lu)*h(lu)*SAI/u*).
+                    const int local_lu = lu_map[ij];
+                    const TF local_sai = lai[ij] + sai_add[ij];
 
                     const TF rb = (TF)1.0 / (ckarman * ustar[ij]) * diff_scl[0];
                     deposition_tiles.at(lu_type).rb.data()[ij] = rb;
@@ -486,6 +557,7 @@ namespace
                         use_input_ccomp = true;
                     }
 
+                    depac_debug_print<TF>("soil", i, j, local_lu, lai[ij], local_sai, c_veg[ij], fraction[ij], nwet_soil, ustar[ij], ra[ij], rb, T_a[ij]-TF(273.15), RH_a[ij], nh3_ugm3);   // DEBUG
                     depac_wrapper
                         (
                         compnam,
@@ -497,9 +569,9 @@ namespace
                         sinphi,
                         RH_a[ij],
                         lai[ij],
-                        sai,
+                        local_sai,   // CHANGED: was the unassigned member "sai"
                         nwet_soil,
-                        lu,
+                        local_lu,    // CHANGED: was the unassigned member "lu"
                         iratns,
                         &rc_tot,
                         &ccomp_tot,
@@ -519,9 +591,14 @@ namespace
                         &cw_out,      
                         &cstom_out,  
                         &csoil_out,
-                        use_input_ccomp
+                        use_input_ccomp,
+                        T_a[ij],  // ADDED: tsea [K]. CHECK: air temperature at the first model level is used as water surface temperature   // CHANGED: comma added
+                        c_ave_prev_so2   // ADDED: long-term mean SO2 [ug m-3], last argument
                         );
 
+                    // ADDED: a non-zero DEPAC status was silently ignored before, and the tile then kept its old v_e
+                    if (status != STATUS_OK)
+                        throw std::runtime_error("Deposition: DEPAC returned status " + std::to_string(status) + " for tile " + lu_type + " at i=" + std::to_string(i) + ", j=" + std::to_string(j) + ", lu=" + std::to_string(local_lu));
                     if (status == STATUS_OK)
                     {
                         deposition_tiles.at(lu_type).rc_tot.data()[ij] = rc_tot;
@@ -535,7 +612,14 @@ namespace
                         deposition_tiles.at(lu_type).csoil_out.data()[ij] = csoil_out;
 
                         const TF total_resistance = ra[ij] + rb + rsoil_eff_out;
-                        if (std::abs(total_resistance) > (TF)1e-6)
+                        // ADDED: rsoil_eff_out = -9999 means no soil path (depac_wrapper sets it when gsoil_eff_out <= 0,
+                        // e.g. grass and "other", where DEPAC has R_inc = -999, le_drydepos_gas_depac.f90 l. 1605-1606).
+                        // Then v_e = 0, not 1/(ra + rb - 9999) < 0 (a spurious emission).
+                        if (rsoil_eff_out < TF(0))
+                        {
+                            vdnh3[ij] = TF(0);
+                        }
+                        else if (std::abs(total_resistance) > (TF)1e-6)
                         {
                             vdnh3[ij] = (TF)1.0 / total_resistance;
                         }
@@ -576,12 +660,13 @@ namespace
                     }
                     if (c_veg[ij] > 0)
                     {
+                        // CHANGED: same as the veg tile (REDUNDANT: hard-coded is_forest test removed).
                         const int local_lu = lu_map[ij];
-                        const bool is_forest = (local_lu == 4 || local_lu == 5 || local_lu == 12);
-                        const TF local_sai   = is_forest ? lai[ij] + TF(1.0) : lai[ij];
+                        const TF local_sai = lai[ij] + sai_add[ij];
                         const TF rb = TF(2.0) / (ckarman * ustar[ij]) * diff_scl[0];
                         deposition_tiles.at(lu_type).rb.data()[ij] = rb;
 
+                        depac_debug_print<TF>("wet_veg", i, j, local_lu, lai[ij], local_sai, c_veg[ij], fraction[ij], nwet_wet, ustar[ij], ra[ij], rb, T_a[ij]-TF(273.15), RH_a[ij], nh3_ugm3);   // DEBUG
                         depac_wrapper
                             (
                             compnam,
@@ -615,9 +700,14 @@ namespace
                             &cw_out,      
                             &cstom_out,  
                             &csoil_out,
-                            use_input_ccomp
+                            use_input_ccomp,
+                            T_a[ij],  // ADDED: tsea [K]. CHECK: air temperature at the first model level is used as water surface temperature   // CHANGED: comma added
+                            c_ave_prev_so2   // ADDED: long-term mean SO2 [ug m-3], last argument
                             );
 
+                        // ADDED: a non-zero DEPAC status was silently ignored before, and the tile then kept its old v_e
+                        if (status != STATUS_OK)
+                            throw std::runtime_error("Deposition: DEPAC returned status " + std::to_string(status) + " for tile " + lu_type + " at i=" + std::to_string(i) + ", j=" + std::to_string(j) + ", lu=" + std::to_string(local_lu));
                         if (status == STATUS_OK)
                         {
                             deposition_tiles.at(lu_type).rc_tot.data()[ij] = rc_tot;
@@ -630,7 +720,13 @@ namespace
                             deposition_tiles.at(lu_type).cstom_out.data()[ij] = cstom_out;
                             deposition_tiles.at(lu_type).csoil_out.data()[ij] = csoil_out;
                             const TF total_resistance = ra[ij] + rb + rc_eff;
-                            if (std::abs(total_resistance) > (TF)1e-6)
+                            // ADDED: rc_tot = -9999 means DEPAC found no deposition path (le_drydepos_gas_depac.f90 l. 165-167, 1631-1632).
+                            // Then rc_eff = -9999 as well, and 1/(ra + rb - 9999) < 0 would be a spurious emission.
+                            if (rc_tot < TF(-9998))
+                            {
+                                vdnh3[ij] = TF(0);
+                            }
+                            else if (std::abs(total_resistance) > (TF)1e-6)
                             {
                                 vdnh3[ij] = (TF)1.0 / total_resistance;
                             }
@@ -642,9 +738,15 @@ namespace
                     }
                     else
                     {
+                        // CHANGED: this branch used the unassigned members "lu" and "sai". It now uses the cell's own class and SAI.
+                        // CHECK: modelling choice, see the soil tile above.
+                        const int local_lu = lu_map[ij];
+                        const TF local_sai = lai[ij] + sai_add[ij];
+
                         const TF rb = (TF)1.0 / (ckarman * ustar[ij]) * diff_scl[0];
                         deposition_tiles.at(lu_type).rb.data()[ij] = rb;
 
+                        depac_debug_print<TF>("wet_noveg", i, j, local_lu, lai[ij], local_sai, c_veg[ij], fraction[ij], nwet_wet, ustar[ij], ra[ij], rb, T_a[ij]-TF(273.15), RH_a[ij], nh3_ugm3);   // DEBUG
                         depac_wrapper
                             (
                             compnam,
@@ -656,9 +758,9 @@ namespace
                             sinphi,
                             RH_a[ij],
                             lai[ij],
-                            sai,
+                            local_sai,   // CHANGED: was the unassigned member "sai"
                             nwet_wet,
-                            lu,
+                            local_lu,    // CHANGED: was the unassigned member "lu"
                             iratns,
                             &rc_tot,
                             &ccomp_tot,
@@ -678,9 +780,14 @@ namespace
                             &cw_out,        
                             &cstom_out,    
                             &csoil_out,
-                            use_input_ccomp
+                            use_input_ccomp,
+                            T_a[ij],  // ADDED: tsea [K]. CHECK: air temperature at the first model level is used as water surface temperature   // CHANGED: comma added
+                            c_ave_prev_so2   // ADDED: long-term mean SO2 [ug m-3], last argument
                             );
 
+                        // ADDED: a non-zero DEPAC status was silently ignored before, and the tile then kept its old v_e
+                        if (status != STATUS_OK)
+                            throw std::runtime_error("Deposition: DEPAC returned status " + std::to_string(status) + " for tile " + lu_type + " at i=" + std::to_string(i) + ", j=" + std::to_string(j) + ", lu=" + std::to_string(local_lu));
                         if (status == STATUS_OK)
                         {
                             deposition_tiles.at(lu_type).rc_tot.data()[ij] = rc_tot;
@@ -693,7 +800,14 @@ namespace
                             deposition_tiles.at(lu_type).cstom_out.data()[ij] = cstom_out;
                             deposition_tiles.at(lu_type).csoil_out.data()[ij] = csoil_out;
 	                        const TF total_resistance = ra[ij] + rb + rsoil_eff_out;
-	                        if (std::abs(total_resistance) > (TF)1e-6)
+	                        // ADDED: rsoil_eff_out = -9999 means no soil path (depac_wrapper sets it when gsoil_eff_out <= 0,
+	                        // e.g. grass and "other", where DEPAC has R_inc = -999, le_drydepos_gas_depac.f90 l. 1605-1606).
+	                        // Then v_e = 0, not 1/(ra + rb - 9999) < 0 (a spurious emission).
+	                        if (rsoil_eff_out < TF(0))
+	                        {
+	                            vdnh3[ij] = TF(0);
+	                        }
+	                        else if (std::abs(total_resistance) > (TF)1e-6)
 	                        {
 	                            vdnh3[ij] = (TF)1.0 / total_resistance;
 	                        }
@@ -735,18 +849,19 @@ namespace
         const TF rh,
         const TF* const restrict T_a,
         const TF* const restrict RH_a,
-        const TF sai,
+        // REDUNDANT (removed): const TF sai,   // SAI is now lai + sai_add per cell
         const TF lat,
         const int day_of_year,
-        const int nwet,
+        // REDUNDANT (removed): const int nwet,   // was never assigned and never used in the kernels
         const int nwet_veg,      
         const int nwet_soil,
         const int nwet_wet,
-        const int lu,
+        // REDUNDANT (removed): const int lu,   // land-use class is now taken per cell from lu_map
         const int iratns,
         const TF hlaw,
         const TF react,
         const TF c_ave_prev_nh3,
+        const TF c_ave_prev_so2,   // ADDED: long-term mean SO2 [ug m-3]
         const TF catm,
         const TF pressure,
         const bool sw_override_ccomp,
@@ -757,6 +872,7 @@ namespace
         const int jstart, const int jend,
         const int jj,
         const int* const restrict lu_map,
+        const TF* const restrict sai_add,   // ADDED: SAI - LAI per cell (0 or 1), from sai_add.0000000
         const int kstart,
         const int ijcells
         )
@@ -784,18 +900,19 @@ namespace
                 rh,
                 T_a,
                 RH_a,
-                sai,
+                // REDUNDANT (removed): sai,   // argument removed together with the parameter
                 lat,
                 day_of_year,
-                nwet,
+                // REDUNDANT (removed): nwet,   // argument removed together with the parameter
                 nwet_veg, 
                 nwet_soil,
                 nwet_wet,
-                lu,
+                // REDUNDANT (removed): lu,   // argument removed together with the parameter
                 iratns,
                 hlaw,
                 react,
                 c_ave_prev_nh3,
+                c_ave_prev_so2,   // ADDED
                 catm,
                 pressure,
                 sw_override_ccomp,
@@ -806,6 +923,7 @@ namespace
                 jstart, jend,
                 jj,
                 lu_map,
+                sai_add,   // ADDED
                 kstart,
                 ijcells
                 );
@@ -847,19 +965,24 @@ master(masterin), grid(gridin), fields(fieldsin), radiation(radiationin), chemis
     hlaw = inputin.get_item<TF>("deposition", "hlaw", "");
     react = inputin.get_item<TF>("deposition", "react", "");
     c_ave_prev_nh3 = inputin.get_item<TF>("deposition", "c_ave_prev_nh3", "");
+    c_ave_prev_so2 = inputin.get_item<TF>("deposition", "c_ave_prev_so2", "", TF(0.));   // CHANGED: optional, 0 = no NH3 co-deposition factor
+    if (use_depac && c_ave_prev_so2 <= TF(0.))   // ADDED: make the "off" state visible in the log, since a missing key is silent otherwise
+        master.print_message("Deposition: c_ave_prev_so2 <= 0, the NH3 co-deposition factor in DEPAC is not used\n");
     pressure = inputin.get_item<TF>("thermo", "pbot", "");
     sw_override_ccomp = inputin.get_item<bool>("deposition", "sw_override_ccomp", "", false);
     ccomp_override_value = inputin.get_item<TF>("deposition", "ccomp_override_value", "", TF(0.0));
     nwet_veg = inputin.get_item<int>("deposition", "nwet_veg", "");
     nwet_soil = inputin.get_item<int>("deposition", "nwet_soil", "");
     nwet_wet = inputin.get_item<int>("deposition", "nwet_wet", "");
+    catm = TF(0.0);   // ADDED: was passed on uninitialised. Not used by the DEPAC kernels (nh3_ugm3 is computed from Chemistry).
     sw_sinphi_prescr = inputin.get_item<bool>("deposition", "sw_sinphi_prescr", "", true);
-    if (sw_sinphi_prescr)
-    {
-        Netcdf_file input_nc(master, "plume_chem_input.nc", Netcdf_mode::Read);
-        t_sunrise = input_nc.get_variable<TF>("t_sunrise");
-        t_sunset = input_nc.get_variable<TF>("t_sunset");
-    } 
+    // REDUNDANT (moved to Deposition::create): the read of t_sunrise and t_sunset. Reason: the file name "plume_chem_input.nc" was hard-coded.
+    // if (sw_sinphi_prescr)
+    // {
+    //     Netcdf_file input_nc(master, "plume_chem_input.nc", Netcdf_mode::Read);
+    //     t_sunrise = input_nc.get_variable<TF>("t_sunrise");
+    //     t_sunset = input_nc.get_variable<TF>("t_sunset");
+    // }
 }
 
 template <typename TF>
@@ -877,27 +1000,12 @@ void Deposition<TF>::init(Input& inputin)
     if (!sw_deposition)
         return;
 
-    if (use_depac)
-    {
-        // Read per-cell DEPAC land use map from binary file written by plume_chem_input.py.
-        // lu_map.0000000 contains one integer per cell: 1=grass, 4=coniferous, 5=deciduous etc.
-        auto& gd = grid.get_grid_data();
-        lu_map.resize(gd.ijcells);
-        std::string lu_map_file = "lu_map.0000000";
-        std::ifstream file(lu_map_file, std::ios::binary);
-        if (!file)
-            throw std::runtime_error("Cannot open " + lu_map_file);
-        std::vector<double> buf(gd.imax * gd.jmax);
-        file.read(reinterpret_cast<char*>(buf.data()), buf.size() * sizeof(double));
-        file.close();
-        for (int j = gd.jstart; j < gd.jend; ++j)
-            for (int i = gd.istart; i < gd.iend; ++i)
-            {
-                const int ij     = i + j * gd.icells;
-                const int ij_buf = (i - gd.istart) + (j - gd.jstart) * gd.imax;
-                lu_map[ij] = static_cast<int>(buf[ij_buf]);
-            }
-    }
+    // REDUNDANT (moved to Deposition::create): the lu_map reader that was here.
+    // Reason: it read imax*jmax values from the start of the global file on every MPI rank, so with npx*npy > 1
+    // every rank got the wrong sub-domain. The old code, for reference:
+    //     std::vector<double> buf(gd.imax * gd.jmax);
+    //     file.read(reinterpret_cast<char*>(buf.data()), buf.size() * sizeof(double));
+    //     lu_map[ij] = static_cast<int>(buf[ij_buf]);
 
     auto& gd = grid.get_grid_data();
 
@@ -972,10 +1080,62 @@ void Deposition<TF>::init(Input& inputin)
 }
 
 template <typename TF>
-void Deposition<TF>::create(Stats<TF>& stats, Cross<TF>& cross)
+void Deposition<TF>::create(Stats<TF>& stats, Cross<TF>& cross, Netcdf_handle& input_nc)   // CHANGED: added input_nc (<sim_name>_input.nc)
 {
     if (!sw_deposition)
         return;
+
+    // ADDED: read the sunrise and sunset times from <sim_name>_input.nc (moved here from the constructor)
+    if (use_depac && sw_sinphi_prescr)
+    {
+        t_sunrise = input_nc.get_variable<TF>("t_sunrise");
+        t_sunset  = input_nc.get_variable<TF>("t_sunset");
+    }
+
+    // ADDED: load lu_map (DEPAC class) and sai_add (0/1) from plume_chem_input.py. Done here, because it needs the grid and the
+    // fields, as the LSM does for its own binaries.
+    if (use_depac)
+    {
+        auto& gd = grid.get_grid_data();
+
+        // Both files are written in the model precision (TF) like the other LSM binaries.
+        // Field3d_io::load_xy_slice hands every MPI rank its own sub-domain.
+        // CHECK: signature copied from how MicroHH's LSM loads its 2D binaries
+        //        (field3d_io.load_xy_slice(field, tmp->fld.data(), filename), returns non-zero on failure).
+        //        I could not compile against your MicroHH tree. If the compiler rejects this call, compare with load_2d_field() in boundary_surface_lsm.cxx.
+        Field3d_io<TF> field3d_io(master, grid);
+        auto tmp = fields.get_tmp();
+
+        auto load_2d = [&](const std::string& filename, std::vector<TF>& field)
+        {
+            field.assign(gd.ijcells, TF(0.0));
+            master.print_message("Loading \"%s\" ... ", filename.c_str());
+            if (field3d_io.load_xy_slice(field.data(), tmp->fld.data(), filename.c_str()))
+            {
+                master.print_message("FAILED\n");
+                fields.release_tmp(tmp);
+                throw std::runtime_error("Deposition: cannot load " + filename);
+            }
+            master.print_message("OK\n");
+        };
+
+        std::vector<TF> lu_in, sai_add_in;
+        load_2d("lu_map.0000000", lu_in);
+        load_2d("sai_add.0000000", sai_add_in);
+        fields.release_tmp(tmp);
+
+        // Check every interior cell. Only interior cells are used by the kernels.
+        lu_map.assign(gd.ijcells, 0);
+        sai_add.assign(gd.ijcells, TF(0.0));
+        for (int j = gd.jstart; j < gd.jend; ++j)
+            for (int i = gd.istart; i < gd.iend; ++i)
+            {
+                const int ij = i + j * gd.icells;
+                lu_map[ij]  = checked_depac_lu<TF>(lu_in[ij]);
+                sai_add[ij] = checked_sai_add<TF>(sai_add_in[ij]);
+            }
+    }
+
     if (cross.get_switch())
     {
         std::vector<std::string> allowed_crossvars = 
@@ -1186,18 +1346,19 @@ void Deposition<TF>::update_time_dependent
             rh,
             T_a.data(),
             RH_a.data(),
-            sai,
+            // REDUNDANT (removed): sai,   // argument removed together with the parameter
             lat,
             day_of_year,
-            nwet,
+            // REDUNDANT (removed): nwet,   // argument removed together with the parameter
             nwet_veg,
             nwet_soil,
             nwet_wet,
-            lu,
+            // REDUNDANT (removed): lu,   // argument removed together with the parameter
             iratns,
             hlaw,
             react,
             c_ave_prev_nh3,
+            c_ave_prev_so2,   // ADDED
             catm,
             pressure,
             sw_override_ccomp,
@@ -1208,6 +1369,7 @@ void Deposition<TF>::update_time_dependent
             gd.jstart, gd.jend,
             gd.icells,
             lu_map.data(),
+            sai_add.data(),   // ADDED
             gd.kstart,
             gd.ijcells
             );

@@ -12,6 +12,7 @@
 
 class Master;
 class Input;
+class Netcdf_handle;   // ADDED: forward declaration for the new create() argument
 template<typename> class Grid;
 template<typename> class Fields;
 template<typename> class Stats;
@@ -54,7 +55,7 @@ class Deposition
     Deposition(Master&, Grid<TF>&, Fields<TF>&, Radiation<TF>&, Chemistry<TF>&, Input&);
     ~Deposition();
     void init(Input&);
-    void create(Stats<TF>&, Cross<TF>&);
+    void create(Stats<TF>&, Cross<TF>&, Netcdf_handle&);   // CHANGED: added Netcdf_handle& (<sim_name>_input.nc) to read t_sunrise and t_sunset
     void update_time_dependent
         (
         Timeloop<TF>&, 
@@ -105,25 +106,27 @@ class Deposition
     TF sinphi;
     TF temperature;
     TF rh;
-    TF sai;
+    // REDUNDANT (removed): TF sai;  never assigned. SAI is now lai + sai_add per cell (deposition.cxx).
     TF lat;
     bool sw_sinphi_prescr;
     TF t_sunrise;
     TF t_sunset;
     int day_of_year;
-    int nwet;
+    // REDUNDANT (removed): int nwet;  never assigned and never used. The tiles use nwet_veg, nwet_soil and nwet_wet.
     int nwet_veg;
     int nwet_soil;
     int nwet_wet;
-    int lu;
+    // REDUNDANT (removed): int lu;  never assigned. The land-use class is taken per cell from lu_map.
     int iratns;
     TF hlaw;
     TF react;
     TF c_ave_prev_nh3;  // long-term average atmospheric NH3 concentration C_ave,prev [ug m-3]
+    TF c_ave_prev_so2;  // ADDED: long-term mean atmospheric SO2 concentration C_ave,prev,SO2 [ug m-3]. Used by DEPAC only in the NH3 co-deposition factor
     TF catm;            // atmospheric NH3 concentration chi_a passed to DEPAC [ug m-3]
     TF c_ug;            // unit conversion factor: mol mol-1 to ug m-3 (rho * M_NH3 / M_air)
     TF pressure;
-    std::vector<int> lu_map;
+    std::vector<int> lu_map;   // CHANGED (comment only): DEPAC class 1-18 per cell, loaded from lu_map.0000000 in create()
+    std::vector<TF> sai_add;   // ADDED: SAI - LAI per cell (0 or 1), loaded from sai_add.0000000 in create()
     std::vector<std::string> deposition_tile_names {"veg", "soil", "wet"};
     Deposition_tile_map<TF> deposition_tiles;
     const std::string tend_name = "deposition";
