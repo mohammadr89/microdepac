@@ -34,7 +34,7 @@ contains
                             status, c_ave_prev_nh3, ra, rb, catm, rc_eff, &
                             gsoil_eff_out, rsoil_eff_out, p, &
                             gw_out, gstom_out, cw_out, cstom_out, csoil_out, &
-                            use_input_ccomp) bind(C, name="depac_wrapper")
+                            use_input_ccomp, tsea, c_ave_prev_so2) bind(C, name="depac_wrapper")   ! CHANGED: added tsea, then c_ave_prev_so2 as the last argument (must match the extern "C" prototype in deposition.cxx)
 
    ! Input parameters: Component name (e.g., "NH3")
    character(kind=c_char), intent(in) :: compnam(*)
@@ -61,6 +61,14 @@ contains
    real(c_float), value, intent(in) :: catm           ! Atmospheric concentration (µg/m³)
    real(c_float), value, intent(in) :: ra             ! Aerodynamic resistance (s/m)
    real(c_float), value, intent(in) :: rb             ! Boundary layer resistance (s/m)
+   ! ADDED: water surface temperature (K). DEPAC reads tsea without a present() check for water
+   !        land-use classes (le_drydepos_gas_depac.f90 l. 1753-1755). Before, it was not passed,
+   !        so DEPAC read an absent optional argument (undefined behaviour, likely segfault).
+   real(c_float), value, intent(in) :: tsea
+   ! ADDED: long-term mean SO2 concentration C_ave,prev,SO2 [ug m-3]. DEPAC uses it only in the NH3 co-deposition
+   !        factor of the external leaf resistance. The co-deposition block requires c_ave_prev_nh3 > 0 and c_ave_prev_so2 > 0,
+   !        so c_ave_prev_so2 = 0 skips it and reproduces the results without this argument.
+   real(c_float), value, intent(in) :: c_ave_prev_so2
 
    ! Output parameters: Resistances and compensation points
    real(c_float), intent(out) :: rc_tot               ! Total canopy resistance (s/m)
@@ -82,9 +90,22 @@ contains
    character(len=6) :: f_compnam
    real(c_float) :: original_ccomp
    real(c_float) :: temp_cw_out, temp_cstom_out, temp_csoil_out
+   logical, save :: so2_debug_done = .false.   ! ADDED: DEBUG (temporary). Print the long-term means once per rank
+   integer :: env_status                       ! ADDED: DEBUG (temporary)
 
    ! Convert C string to Fortran string
    call c_f_string(compnam, f_compnam)
+
+   ! ADDED: DEBUG (temporary, remove after verification). With the environment variable DEPAC_DEBUG_SO2 set,
+   !        print the values that reach DEPAC on the first call of this rank.
+   if (.not. so2_debug_done) then
+     so2_debug_done = .true.
+     call get_environment_variable("DEPAC_DEBUG_SO2", status=env_status)
+     if (env_status == 0) then
+       write(*,'(a,es12.5,a,es12.5,a,i0)') 'DEPAC_DEBUG_SO2 c_ave_prev_nh3=', c_ave_prev_nh3, &
+                                          ' c_ave_prev_so2=', c_ave_prev_so2, ' iratns=', iratns
+     end if
+   end if
    
    ! Store the input compensation point if we're going to use it
    if (use_input_ccomp /= 0) then
@@ -95,10 +116,11 @@ contains
    call DryDepos_Gas_DEPAC(f_compnam, day_of_year, lat, t, ust, glrad, sinphi, rh, &
                           lai, sai, nwet, lu, iratns, &
                           rc_tot, ccomp_tot, hlaw, react, &
-                          status, p=p, c_ave_prev_nh3=c_ave_prev_nh3, ra=ra, rb=rb, &
+                          status, p=p, tsea=tsea, c_ave_prev_nh3=c_ave_prev_nh3, &
+                          c_ave_prev_so2=c_ave_prev_so2, ra=ra, rb=rb, &   ! CHANGED: added c_ave_prev_so2=c_ave_prev_so2 (keyword argument, order irrelevant here)
                           catm=catm, rc_eff=rc_eff, &
                           gw_out=gw_out, gstom_out=gstom_out, gsoil_eff_out=gsoil_eff_out, &
-                          cw_out=temp_cw_out, cstom_out=temp_cstom_out, csoil_out=temp_csoil_out)
+                          cw_out=temp_cw_out, cstom_out=temp_cstom_out, csoil_out=temp_csoil_out)   ! CHANGED: added tsea=tsea
 
    ! CRITICAL CHANGE: Handle override mode more explicitly
    if (use_input_ccomp /= 0) then
@@ -135,6 +157,7 @@ contains
 
    ! Calculate effective soil resistance from conductance
    ! Use -9999.0 as error value when conductance is 0 or negative
+   ! (deposition.cxx now treats rsoil_eff_out < 0 as "no soil path", i.e. v_e = 0)
    if (gsoil_eff_out > 0.0) then
      rsoil_eff_out = 1.0/gsoil_eff_out
    else

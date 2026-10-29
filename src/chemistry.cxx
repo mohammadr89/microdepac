@@ -626,8 +626,10 @@ void Chemistry<TF>::create
     {
         std::vector<std::string> allowed_crossvars = {"vdnh3","flux_nh3","flux_inst","total_flux_mol_ha","cstar1","cstar2","c_target","c_extrap_diff","c_diff","T_target","rho_target"};
         cross_list = cross.get_enabled_variables(allowed_crossvars);
-        deposition->create(stats, cross);
+        // REDUNDANT: deposition->create(stats, cross);   // was inside the cross switch, so with cross-sections off lu_map, sai_add, t_sunrise and t_sunset were never loaded
     }
+
+    deposition->create(stats, cross, input_nc);   // CHANGED: moved out of the cross switch and passes <sim_name>_input.nc. Deposition::create checks cross.get_switch() itself.
 }
 
 template<typename TF>
